@@ -1,0 +1,52 @@
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans TC", "PingFang TC", Helvetica, Arial;
+  margin: 0;
+}
+
+a,
+a:visited,
+a:hover,
+a:active {
+  color: #2563eb;          /* 或改成固定色，例如 #2563eb */
+  text-decoration: none;   /* 移除底線 */
+}
+
+.topbar {
+  background: #0f172a;
+  color: #fff;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+main {
+  padding: 16px;
+}
+
+section {
+  margin-bottom: 24px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #e5e7eb;
+  padding: 6px 8px;
+  font-size: 14px;
+}
+
+button {
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  padding: 6px;
+}

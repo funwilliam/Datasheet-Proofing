@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+
+{% block head_extra %}
+<style>
+  /* === modal 基本樣式（只對本頁生效） === */
+  .modal.hidden {
+    display: none;
+  }
+
+  .modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+
+  .modal .modal-body {
+    background: #fff;
+    width: 640px;
+    max-width: 92vw;
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+
+  .modal .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .muted {
+    color: #6b7280;
+    margin-top: 8px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .file-list {
+    margin: 8px 0;
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+    background: #f9fafb;
+    max-height: 180px;
+    overflow-y: auto;
+    font-size: 14px;
+  }
+
+  /* 空清單完全不顯示，避免殘影/邊框 */
+  .file-list:empty {
+    display: none;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .file-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+  }
+
+  .file-list li:last-child {
+    border-bottom: none;
+  }
+
+  .file-list .meta {
+    color: #6b7280;
+    font-size: 12px;
+  }
+
+  .btn-link {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: #2563eb;
+    cursor: pointer;
+  }
+</style>
+
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>上傳/登錄</h2>
+  <div class="btn-row">
+    <button id="openUploadModal">上傳 PDF（可多檔）</button>
+    <button id="openUrlModal">貼上下載連結（批量）</button>
+  </div>
+
+  <!-- 上傳 PDF Modal -->
+  <div id="uploadModal" class="modal hidden">
+    <div class="modal-body">
+      <h3>上傳 PDF（可多檔）</h3>
+      <form id="uploadMultiForm" enctype="multipart/form-data" method="post" action="/api/files/upload-multi">
+        <input type="file" id="uploadFiles" name="files" accept="application/pdf" multiple />
+        <ul id="fileList" class="file-list"></ul>
+        <p class="muted">
+          可一次選取多個 PDF。
+          <button type="button" id="clearAllBtn" class="btn-link">清空清單</button>
+        </p>
+        <div class="modal-actions">
+          <button type="submit">送出上傳</button>
+          <button type="button" class="close">關閉</button>
+        </div>
+      </form>
+      <div id="uploadMultiMsg" class="muted"></div>
+    </div>
+  </div>
+
+  <!-- 貼上下載連結 Modal -->
+  <div id="urlModal" class="modal hidden">
+    <div class="modal-body">
+      <h3>貼上下載連結（每行一個）</h3>
+      <form id="urlBatchForm" method="post" action="/api/files/upload-urls" autocomplete="off">
+        <textarea name="urls" placeholder="https://example.com/a.pdf&#10;https://example.com/b.pdf" style="width:520px;height:160px;"></textarea>
+        <div style="margin:8px 0;">
+          <input type="text" name="hsd_name" list="hsdOptions" placeholder="站點(例如 Mouser/DigiKey/...)" style="width: 320px;" />
+          <datalist id="hsdOptions">
+            <option value="Mouser"></option>
+            <option value="DigiKey"></option>
+            <option value="Arrow"></option>
+            <option value="Future"></option>
+            <option value="RS"></option>
+          </datalist>
+        </div>
+        <p class="muted">部分 HSD 站點需要模擬 session/headers 否則爬蟲下載檔案會失敗。</p>
+        <div class="modal-actions">
+          <button type="submit">建立下載任務</button>
+          <button type="button" class="close">關閉</button>
+        </div>
+      </form>
+      <div id="urlBatchMsg" class="muted"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>檔案清單</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>hash</th>
+        <th>檔名</th>
+        <th>大小</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr>
+        <td><code>{{ f.file_hash[:8] }}</code></td>
+        <td>{{ f.filename }}</td>
+        <td>{{ f.size_bytes or '-' }}</td>
+        <td>
+          <a href="/files/{{ f.file_hash }}">查看</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const uploadModal = document.getElementById('uploadModal');
+  const urlModal = document.getElementById('urlModal');
+
+  document.getElementById('openUploadModal').onclick = () => uploadModal.classList.remove('hidden');
+  document.getElementById('openUrlModal').onclick = () => urlModal.classList.remove('hidden');
+
+  Array.from(document.querySelectorAll('.modal .close')).forEach(btn => {
+    btn.onclick = (e) => {
+      const modal = e.target.closest('.modal');
+      modal.classList.add('hidden');
+
+      // 如果是 urlModal，清空輸入欄位
+      if (modal.id === 'urlModal') {
+        modal.querySelector('textarea[name="urls"]').value = '';
+        modal.querySelector('input[name="hsd_name"]').value = '';
+        document.getElementById('urlBatchMsg').textContent = '';
+      }
+    };
+  });
+  [uploadModal, urlModal].forEach(m => {
+    m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { uploadModal.classList.add('hidden'); urlModal.classList.add('hidden'); }
+  });
+
+  // ====== 上傳多檔（疊加/可移除/可清空）======
+  const uploadMultiForm = document.getElementById('uploadMultiForm');
+  const uploadInput = document.getElementById('uploadFiles');
+  const fileListEl = document.getElementById('fileList');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  // 以 Map 紀錄檔案，key: name+size+lastModified，避免重覆；支援疊加
+  const fileMap = new Map();
+  const fileKey = f => `${f.name}::${f.size}::${f.lastModified}`;
+
+  function renderFileList() {
+    fileListEl.innerHTML = '';
+    for (const [k, f] of fileMap) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span>
+          ${f.name} <span class="meta">(${(f.size / 1024).toFixed(1)} KB)</span>
+        </span>
+        <button type="button" class="btn-link remove" data-k="${k}">移除</button>
+      `;
+      fileListEl.appendChild(li);
+    }
+    fileListEl.querySelectorAll('button.remove').forEach(btn => {
+      btn.onclick = () => { fileMap.delete(btn.dataset.k); renderFileList(); };
+    });
+  }
+
+  uploadInput.addEventListener('change', () => {
+    Array.from(uploadInput.files || []).forEach(f => {
+      const k = fileKey(f);
+      if (!fileMap.has(k)) fileMap.set(k, f);
+    });
+    // 重要：清掉 input.value，才能再次選擇同一批檔案也會觸發 change（且不覆蓋）
+    uploadInput.value = '';
+    renderFileList();
+  });
+
+  clearAllBtn.onclick = () => { fileMap.clear(); renderFileList(); };
+
+  uploadMultiForm.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!fileMap.size) { alert('尚未選擇檔案'); return; }
+    const fd = new FormData();
+    for (const f of fileMap.values()) fd.append('files', f, f.name);
+    const res = await fetch(uploadMultiForm.action, { method: 'POST', body: fd });
+    const json = await res.json();
+    document.getElementById('uploadMultiMsg').textContent = `已上傳 ${json.uploaded} 檔案`;
+    fileMap.clear();
+    renderFileList();
+  };
+
+  // ====== URL 批量 ======
+  const urlBatchForm = document.getElementById('urlBatchForm');
+  urlBatchForm && (urlBatchForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    const raw = urlBatchForm.querySelector('textarea[name="urls"]').value || '';
+    const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    for (const u of lines) fd.append('urls', u);
+    const site = urlBatchForm.querySelector('input[name="hsd_name"]').value || '';
+    if (site) fd.append('hsd_name', site);
+    const res = await fetch(urlBatchForm.action, { method: 'POST', body: fd });
+    const json = await res.json();
+    document.getElementById('urlBatchMsg').textContent = `已建立 ${json.queued} 個下載任務（前往「下載任務」頁面查看進度）`;
+  });
+</script>
+{% endblock %}

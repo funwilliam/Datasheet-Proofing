@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>檔案：{{ fa.filename }} (<code>{{ fa.file_hash }}</code>)</h2>
+<p>
+  <a href="/pdf/{{ fa.file_hash }}" target="_blank">開啟 PDF</a>
+  &nbsp;|&nbsp;
+  <button id="queueBtn">加入解析佇列</button>
+  <label><input type="checkbox" id="forceRerun"> 強制重跑</label>
+</p>
+
+<h3>已擷取的型號</h3>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Model Number</th>
+      <th>Status</th>
+      <th>操作</th>
+    </tr>
+  </thead>
+  <tbody id="modelsBody">
+    {% for m in models %}
+    <tr>
+      <td>{{ m.id }}</td>
+      <td>{{ m.model_number }}</td>
+      <td>{{ m.verify_status }}</td>
+      <td><a href="/review/{{ m.id }}">校對</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  const fileHash = "{{ fa.file_hash }}";
+  document.getElementById('queueBtn').onclick = async () => {
+    const force = document.getElementById('forceRerun').checked;
+    await fetch('/api/tasks/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_hashes: [fileHash], force_rerun: force }) });
+    alert('已加入佇列');
+  };
+</script>
+{% endblock %}

@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+
+{% block head_extra %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"
+  integrity="sha512-Z8CqofpIcnJN80feS2uccz+pXWgZzeKxDsDNMD/dJ6997/LSRY+W4NmEt9acwR+Gt9OHN0kkI1CTianCwoqcjQ=="
+  crossorigin="anonymous" referrerpolicy="no-referrer">
+  </script>
+{% endblock %}
+
+{% block content %}
+<style>
+  #viewer {
+    display: flex;
+    gap: 16px;
+  }
+
+  #pdfPane {
+    width: 50%;
+    border: 1px solid #ddd;
+    height: 85vh;
+    overflow: auto;
+  }
+
+  #formPane {
+    width: 50%;
+  }
+
+  pre.json {
+    background: #111;
+    color: #ddd;
+    padding: 8px;
+    border-radius: 6px;
+    max-height: 60vh;
+    overflow: auto;
+  }
+</style>
+
+<h2>校對：{{ m.model_number }}</h2>
+<div id="viewer">
+  <div id="pdfPane">
+    <canvas id="pdfCanvas"></canvas>
+    <div style="margin-top:8px;">
+      <button onclick="prevPage()">上一頁</button>
+      <span>Page <span id="pageNum">1</span> / <span id="pageCount">?</span></span>
+      <button onclick="nextPage()">下一頁</button>
+      <input type="text" id="searchBox" placeholder="全文搜尋..." />
+      <button onclick="doSearch()">搜尋</button>
+      <div id="searchRes"></div>
+    </div>
+  </div>
+  <div id="formPane">
+    <h3>欄位 JSON（遵照原有 schema）</h3>
+    <pre id="jsonView" class="json"></pre>
+
+    <textarea id="jsonEdit" style="width:100%; height:240px; display:none;"></textarea>
+    <p>
+      <button id="editBtn" onclick="toggleEdit(true)">✎ 編輯</button>
+      <button id="saveBtn" onclick="saveEdit()" style="display:none;">💾 儲存</button>
+      <button id="cancelBtn" onclick="toggleEdit(false)" style="display:none;">取消</button>
+    </p>
+
+    <p>
+      審核狀態：
+      <select id="statusSel">
+        <option value="pending" {% if m.verify_status=='pending' %}selected{% endif %}>pending</option>
+        <option value="accepted" {% if m.verify_status=='accepted' %}selected{% endif %}>accepted</option>
+        <option value="corrected" {% if m.verify_status=='corrected' %}selected{% endif %}>corrected</option>
+        <option value="rejected" {% if m.verify_status=='rejected' %}selected{% endif %}>rejected</option>
+      </select>
+    </p>
+    <p>
+      審核者：<input id="reviewer" value="" placeholder="姓名或代號" style="width:60%" />
+    </p>
+    <p>
+      備註：<input id="notes" value="" placeholder="備註" style="width:100%" />
+    </p>
+    <p>
+      <button onclick="saveStatus()">更新狀態</button>
+      <a href="/files/{{ fa.file_hash }}">↩ 返回檔案</a>
+    </p>
+  </div>
+</div>
+
+<script>
+  const fileHash = "{{ fa.file_hash }}";
+  const modelId = "{{ m.id }}";
+  let pdfDoc = null, pageNum = 1;
+
+  async function loadModel() {
+    const res = await fetch(`/api/models/${modelId}`);
+    const m = await res.json();
+    const pretty = JSON.stringify(m.fields_json, null, 2);
+    document.getElementById('jsonView').textContent = pretty;
+    document.getElementById('jsonEdit').value = pretty;
+  }
+
+  function toggleEdit(on) {
+    document.getElementById('jsonView').style.display = on ? 'none' : 'block';
+    document.getElementById('jsonEdit').style.display = on ? 'block' : 'none';
+    document.getElementById('editBtn').style.display = on ? 'none' : 'inline-block';
+    document.getElementById('saveBtn').style.display = on ? 'inline-block' : 'none';
+    document.getElementById('cancelBtn').style.display = on ? 'inline-block' : 'none';
+  }
+
+  async function saveEdit() {
+    try {
+      const obj = JSON.parse(document.getElementById('jsonEdit').value);
+      await fetch(`/api/models/${modelId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields_json: obj, verify_status: 'corrected' }) });
+      toggleEdit(false);
+      loadModel();
+      alert('已保存');
+    } catch (e) { alert('JSON 格式錯誤'); }
+  }
+
+  async function saveStatus() {
+    const status = document.getElementById('statusSel').value;
+    const reviewer = document.getElementById('reviewer').value;
+    const notes = document.getElementById('notes').value;
+    await fetch(`/api/models/${modelId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verify_status: status, reviewer, notes }) });
+    alert('已更新');
+  }
+
+  // PDF.js
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadModel();
+    const url = `/pdf/${fileHash}`;
+    const loadingTask = window['pdfjsLib'].getDocument(url);
+    pdfDoc = await loadingTask.promise;
+    document.getElementById('pageCount').textContent = pdfDoc.numPages;
+    renderPage(1);
+  });
+
+  async function renderPage(num) {
+    pageNum = num;
+    const page = await pdfDoc.getPage(num);
+
+    const pdfPane = document.getElementById('pdfPane');
+    const canvas = document.getElementById('pdfCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 原始 viewport（scale = 1）
+    const unscaledViewport = page.getViewport({ scale: 1 });
+
+    // 計算要縮放的倍數（容器寬度 / PDF 預設寬度）
+    const scale = pdfPane.clientWidth / unscaledViewport.width;
+
+    const viewport = page.getViewport({ scale });
+    canvas.height = viewport.height;
+    canvas.width = viewport.width;
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    document.getElementById('pageNum').textContent = num;
+  }
+  function prevPage() { if (pageNum > 1) renderPage(pageNum - 1); }
+  function nextPage() { if (pageNum < pdfDoc.numPages) renderPage(pageNum + 1); }
+
+  async function doSearch() {
+    const q = document.getElementById('searchBox').value;
+    if (!q) return;
+    const res = await fetch(`/api/files/${fileHash}/search?q=` + encodeURIComponent(q));
+    const arr = await res.json();
+    const s = arr.map(x => `第 ${x.page} 頁：…${x.snippet}… <button onclick="renderPage(${x.page})">跳頁</button>`).join('<br/>');
+    document.getElementById('searchRes').innerHTML = s || '無結果';
+  }
+</script>
+{% endblock %}

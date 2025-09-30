@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+
+{% block head_extra %}
+<style>
+    .tabs {
+        display: flex;
+        gap: 6px;
+        margin: 8px 0;
+    }
+
+    .tabs>button {
+        padding: 6px 10px;
+        border: 1px solid #e5e7eb;
+        background: #f8fafc;
+    }
+
+    .tabs>button.active {
+        background: #e2e8f0;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    td pre {
+        white-space: pre-wrap;
+        max-width: 360px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section>
+    <h2>任務總覽</h2>
+
+    <div class="tabs">
+        <button id="tab-download" class="active">下載任務</button>
+        <button id="tab-extraction">擷取任務</button>
+    </div>
+
+    <div id="panel-download">
+        <div style="margin:8px 0;">
+            <label>狀態：
+                <select id="dlStatus">
+                    <option value="">全部</option>
+                    <option value="queued">queued</option>
+                    <option value="running">running</option>
+                    <option value="success">success</option>
+                    <option value="failed">failed</option>
+                </select>
+            </label>
+            <button id="dlRefresh">重新整理</button>
+            <button id="dlRetryAllFailed">重試所有失敗</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>URL</th>
+                    <th>Site</th>
+                    <th>Status</th>
+                    <th>FileHash</th>
+                    <th>Error</th>
+                    <th>時間</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="dlBody"></tbody>
+        </table>
+    </div>
+
+    <div id="panel-extraction" class="hidden">
+        <div style="margin:8px 0;">
+            <label>狀態：
+                <select id="exStatus">
+                    <option value="">全部</option>
+                    <option value="queued">queued</option>
+                    <option value="submitted">submitted</option>
+                    <option value="running">running</option>
+                    <option value="succeeded">succeeded</option>
+                    <option value="failed">failed</option>
+                    <option value="canceled">canceled</option>
+                </select>
+            </label>
+            <label>模式：
+                <select id="exMode">
+                    <option value="">全部</option>
+                    <option value="sync">sync</option>
+                    <option value="batch">batch</option>
+                    <option value="background">background</option>
+                </select>
+            </label>
+            <button id="exRefresh">重新整理</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Mode</th>
+                    <th>Status</th>
+                    <th>Files</th>
+                    <th>Model/Tier</th>
+                    <th>External IDs</th>
+                    <th>Tokens</th>
+                    <th>Cost</th>
+                    <th>時間</th>
+                    <th>輸出</th>
+                    <th>錯誤</th>
+                </tr>
+            </thead>
+            <tbody id="exBody"></tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // ── Tabs
+    const tabDownload = document.getElementById('tab-download');
+    const tabExtraction = document.getElementById('tab-extraction');
+    const panelDownload = document.getElementById('panel-download');
+    const panelExtraction = document.getElementById('panel-extraction');
+    function activate(tab) {
+        if (tab === 'dl') {
+            tabDownload.classList.add('active'); tabExtraction.classList.remove('active');
+            panelDownload.classList.remove('hidden'); panelExtraction.classList.add('hidden');
+        } else {
+            tabExtraction.classList.add('active'); tabDownload.classList.remove('active');
+            panelExtraction.classList.remove('hidden'); panelDownload.classList.add('hidden');
+        }
+    }
+    tabDownload.onclick = () => activate('dl');
+    tabExtraction.onclick = () => activate('ex');
+
+    function formatIso(s) {
+        try {
+            const d = new Date(s);
+            // 以本地時間顯示：YYYY-MM-DD HH:mm:ss
+            const pad = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        } catch { return s; }
+    }
+
+    // ── Download table
+    async function fetchDownloads() {
+        const s = document.getElementById('dlStatus').value;
+        const qs = s ? ('?status=' + encodeURIComponent(s)) : '';
+        const res = await fetch('/api/tasks/download' + qs);
+        return res.json();
+    }
+    function dlRow(t) {
+        const fh = t.file_hash ? `<a href="/files/${t.file_hash}"><code>${t.file_hash.slice(0, 8)}</code></a>` : '';
+        const err = t.error ? `<pre>${t.error}</pre>` : '';
+        const time = [t.created_at && ('C:' + t.created_at), t.started_at && ('S:' + t.started_at), t.completed_at && ('E:' + t.completed_at)].filter(Boolean).join('<br/>');
+        const retryBtn = (t.status === 'failed' || t.status === 'queued') ? `<button class="retry" data-id="${t.id}">重試</button>` : '';
+        return `<tr>
+            <td>${t.id}</td>
+            <td style="max-width:420px;word-break:break-all;">${t.source_url}</td>
+            <td>${t.hsd_name || ''}</td>
+            <td>${t.status}</td>
+            <td>${fh}</td>
+            <td>${err}</td>
+            <td>${time}</td>
+            <td>${retryBtn}</td>
+            </tr>`;
+    }
+    async function renderDownloads() {
+        const arr = await fetchDownloads();
+        document.getElementById('dlBody').innerHTML = arr.map(dlRow).join('');
+        document.querySelectorAll('#dlBody .retry').forEach(btn => {
+            btn.onclick = async () => {
+                const id = btn.getAttribute('data-id');
+                await fetch(`/api/downloads/${id}/retry`, { method: 'POST' });
+                await renderDownloads();
+            };
+        });
+    }
+    document.getElementById('dlRefresh').onclick = renderDownloads;
+    document.getElementById('dlRetryAllFailed').onclick = async () => {
+        const arr = await fetchDownloads();
+        const failed = arr.filter(x => x.status === 'failed');
+        for (const f of failed) await fetch(`/api/downloads/${f.id}/retry`, { method: 'POST' });
+        await renderDownloads();
+    };
+    document.getElementById('dlStatus').onchange = renderDownloads;
+
+    // ── Extraction table
+    async function fetchExtractions() {
+        const s = document.getElementById('exStatus').value;
+        const m = document.getElementById('exMode').value;
+        const qs = new URLSearchParams();
+        if (s) qs.set('status', s);
+        if (m) qs.set('mode', m);
+        const res = await fetch('/api/tasks/extraction' + (qs.toString() ? ('?' + qs.toString()) : ''));
+        return res.json();
+    }
+    function fmtFiles(t) {
+        if (t.file_hashes && t.file_hashes.length) {
+            return `${t.file_hashes.length} files`;
+        }
+        if (t.file_hash) {
+            return `<a href="/files/${t.file_hash}"><code>${t.file_hash.slice(0, 8)}</code></a>`;
+        }
+        return '-';
+    }
+    // ===== 共用：時間格式 =====
+    const fmtLocal = iso => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d)) return iso;
+        return d.toLocaleString(); // 你也可指定 zh-TW
+    };
+    const relTime = iso => {
+        if (!iso) return '';
+        const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' });
+        const d = new Date(iso).getTime();
+        const now = Date.now();
+        const diff = Math.round((d - now) / 1000); // 秒
+        const abs = Math.abs(diff);
+        const units = [
+            ['year', 31536000],
+            ['month', 2592000],
+            ['day', 86400],
+            ['hour', 3600],
+            ['minute', 60],
+            ['second', 1],
+        ];
+        for (const [u, s] of units) {
+            if (abs >= s || u === 'second') {
+                return rtf.format(Math.trunc(diff / s), u);
+            }
+        }
+    };
+    const fmtTimeCell = (c, s, e) => {
+        const parts = [];
+        if (c) parts.push(`建立：${fmtLocal(c)}（${relTime(c)}）`);
+        if (s) parts.push(`開始：${fmtLocal(s)}（${relTime(s)}）`);
+        if (e) parts.push(`結束：${fmtLocal(e)}（${relTime(e)}）`);
+        return parts.join('<br/>');
+    };
+
+    // ── Extraction table
+    function exRow(t) {
+        const tokensSummary = (() => {
+            if (t.input_tokens != null || t.cached_input_tokens != null || t.output_tokens != null) {
+                const i = t.input_tokens ?? 0;
+                const c = t.cached_input_tokens ?? 0;
+                const o = t.output_tokens ?? 0;
+                const prompt = (t.prompt_tokens ?? (i + c));
+                const comp = (t.completion_tokens ?? o);
+                return `${prompt} / ${comp}<br/><span class="muted">(I:${i}, CI:${c}, O:${o})</span>`;
+            } else {
+                // 後端若尚未提供細項，沿用舊版
+                const p = t.prompt_tokens ?? '-';
+                const comp = t.completion_tokens ?? '-';
+                return `${p} / ${comp}`;
+            }
+        })();
+
+        const extIds = t.external_ids ? JSON.stringify(t.external_ids) : '';
+        const cost = (t.cost_usd != null) ? ('$' + t.cost_usd.toFixed(4)) : '-';
+        const time = [
+            t.created_at && ('C:' + formatIso(t.created_at)),
+            t.submitted_at && ('Sb:' + formatIso(t.submitted_at)),
+            t.started_at && ('S:' + formatIso(t.started_at)),
+            t.completed_at && ('E:' + formatIso(t.completed_at))
+        ].filter(Boolean).join('<br/>');
+
+        const out = t.response_path ? `<a href="/api/static/?path=${encodeURIComponent(t.response_path.replace(/\\/g, "/"))}" target="_blank">JSON</a>` : '';
+        const err = t.error ? `<pre>${t.error}</pre>` : '';
+
+        return `<tr>
+            <td>${t.id}</td>
+            <td>${t.mode}</td>
+            <td>${t.status}</td>
+            <td>${fmtFiles(t)}</td>
+            <td>${t.openai_model || ''}/${t.service_tier || ''}</td>
+            <td style="max-width:300px;word-break:break-all;">${extIds}</td>
+            <td>${tokensSummary}</td>
+            <td>${cost}</td>
+            <td>${time}</td>
+            <td>${out}</td>
+            <td>${err}</td>
+        </tr>`;
+    }
+    async function renderExtractions() {
+        const arr = await fetchExtractions();
+        document.getElementById('exBody').innerHTML = arr.map(exRow).join('');
+    }
+    document.getElementById('exRefresh').onclick = renderExtractions;
+    document.getElementById('exStatus').onchange = renderExtractions;
+    document.getElementById('exMode').onchange = renderExtractions;
+
+    // 初次載入
+    document.addEventListener('DOMContentLoaded', async () => {
+        await renderDownloads();
+        await renderExtractions();
+    });
+</script>
+{% endblock %}

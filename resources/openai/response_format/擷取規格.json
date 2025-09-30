@@ -1,0 +1,84 @@
+{
+  "type": "json_schema",
+  "name": "Datasheet_Parsing_Response",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "models": {
+        "type": ["array", "null"],
+        "items": {
+          "type": "object",
+          "properties": {
+            "Model Number": { "type": "string" },
+            "Input Voltage": { "type": "object", "properties": {
+              "lower": { "type": ["string", "null"] },
+              "nominal": { "type": ["string", "null"] },
+              "upper": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["lower", "nominal", "upper", "log"], "additionalProperties": false },
+            "Output Voltage": { "type": "object", "properties": {
+              "value": { "type": "string" },
+              "dual_output": { "type": "boolean" },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "dual_output", "log"], "additionalProperties": false },
+            "Output Current": { "type": "object", "properties": {
+              "value": { "type": "string" },
+              "dual_output": { "type": "boolean" },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "dual_output", "log"], "additionalProperties": false },
+            "Output Power": { "type": "object", "properties": {
+              "value": { "type": ["string", "null"] },
+              "calculated": { "type": "boolean" },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "calculated", "log"], "additionalProperties": false },
+            "Package": { "type": "object", "properties": {
+              "value": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "log"], "additionalProperties": false },
+            "I/O Isolation": { "type": "object", "properties": {
+              "value": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "log"], "additionalProperties": false },
+            "Insulation System": { "type": "object", "properties": {
+              "value": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "log"], "additionalProperties": false },
+            "Application": { "type": "object", "properties": {
+              "values": { "type": "array", "items": { "type": "string" } },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["values", "log"], "additionalProperties": false },
+            "Dimension": { "type": "object", "properties": {
+              "length": { "type": ["string", "null"] },
+              "width": { "type": ["string", "null"] },
+              "height": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["length", "width", "height", "log"], "additionalProperties": false },
+            "Efficiency": { "type": "object", "properties": {
+              "value": { "type": ["string", "null"] },
+              "log": { "type": "array", "items": { "type": "string" } }
+            }, "required": ["value", "log"], "additionalProperties": false },
+            "log": { "type": "array", "items": { "type": "string" } }
+          },
+          "required": ["Model Number", "Input Voltage", "Output Voltage", "Output Current", "Output Power", "Package", "I/O Isolation", "Insulation System", "Application", "Dimension", "Efficiency", "log"],
+          "additionalProperties": false
+        }
+      },
+      "answer": { "type": ["string", "null"] },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["complete", "partial", "error"]
+          },
+          "log": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["status", "log"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["models", "answer", "metadata"],
+    "additionalProperties": false
+  }
+}

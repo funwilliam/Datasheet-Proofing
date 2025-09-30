@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pydantic-settings
+python-multipart
+openai
+pypdf
+aiohttp
+jinja2
+jsonschema

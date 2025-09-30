@@ -1,0 +1,15 @@
+{
+  "type": "json_schema",
+  "name": "Model_Number_Extraction_Response",
+  "strict": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "models": {"type": "array", "items": {"type": "string"}},
+      "total_count": {"type": "integer"},
+      "log": {"type": ["string", "null"]}
+    },
+    "additionalProperties": false,
+    "required": ["models", "total_count", "log"]
+  }
+}
