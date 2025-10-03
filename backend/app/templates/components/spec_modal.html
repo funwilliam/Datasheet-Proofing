@@ -1,0 +1,43 @@
+{# 規格參數 Modal（共用） #}
+<div id="specModal" class="modal hidden">
+  <div class="modal-body">
+    <h3>規格參數編輯 — <span id="specTitle" class="mono"></span></h3>
+
+    <div id="specStatus" style="margin:6px 0 12px;"></div>
+
+    <form id="specForm" autocomplete="off">
+      <div class="form-grid">
+        <label>Input Voltage Range</label>
+        <input type="text" name="input_voltage_range" placeholder="如：4.5~9 VDC">
+        <label>Output Voltage</label>
+        <input type="text" name="output_voltage" placeholder="如：5 VDC 或 ±5 VDC">
+        <label>Output Power</label>
+        <input type="text" name="output_power" placeholder="如：2 W">
+        <label>Package</label>
+        <input type="text" name="package" placeholder="如：SIP7 / DIP8">
+        <label>I/O Isolation</label>
+        <input type="text" name="isolation" placeholder="如：1500 VDC">
+        <label>Insulation System</label>
+        <input type="text" name="insulation" placeholder="如：Reinforced / Basic">
+        <label>Applications</label>
+        <input type="text" name="applications" placeholder="以逗號分隔，如：Medical, Industrial, IoT">
+        <div class="full" style="color:#6b7280;font-size:12px">會儲存為多個標籤</div>
+        <label>Dimension</label>
+        <input type="text" name="dimension" placeholder="如：22.0 x 9.0 x 12.3 mm">
+        <label>備註</label>
+        <textarea name="notes" placeholder="校對備註"></textarea>
+      </div>
+
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label style="color:#6b7280;font-size:12px"><input type="checkbox" id="chkVerified"> 標記為已驗證</label>
+        <input id="reviewerInp" type="text" placeholder="驗證者" class="input" style="height:36px">
+        <span id="verifiedHint" style="color:#6b7280;font-size:12px"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="specCancel">取消</button>
+        <button type="submit" class="btn btn-primary">儲存</button>
+      </div>
+    </form>
+  </div>
+</div>

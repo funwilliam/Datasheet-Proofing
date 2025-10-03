@@ -1,4 +1,5 @@
 # backend/app/routers/static_proxy.py
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pathlib import Path
@@ -12,7 +13,7 @@ ALLOWED_BASES = [
     settings.WORKSPACE_DIR / "exports",
 ]
 
-@router.get("/")
+@router.get("")
 def serve_path(path: str = Query(..., description="Absolute or workspace-relative path")):
     p = Path(path)
     if not p.is_absolute():

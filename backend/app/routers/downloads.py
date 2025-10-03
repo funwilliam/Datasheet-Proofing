@@ -1,3 +1,5 @@
+# backend/app/routers/downloads.py
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -33,7 +35,7 @@ async def enqueue_urls(urls: List[str], hsd_name: Optional[str] = None, db: Sess
 
     return {"queued": len(created_ids), "task_ids": created_ids}
 
-@router.get("/")
+@router.get("")
 def list_downloads(
     db: Session = Depends(get_db),
     limit: int = Query(200, ge=1, le=1000),

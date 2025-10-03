@@ -1,4 +1,5 @@
 # backend/app/schemas.py
+
 from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
@@ -11,8 +12,21 @@ class FileAssetOut(BaseModel):
     size_bytes: Optional[int]
     local_path: str
     created_at: datetime
+
+    parsed: bool # 聚合欄位: 是否已有解析結果
+
     class Config:
         from_attributes = True
+
+class FilesPageOut(BaseModel):
+    items: List[FileAssetOut]
+    total: int
+    page: int
+    page_size: int
+
+class FileAssetLite(BaseModel):
+    file_hash: str
+    filename: str
 
 # ── Upload multi
 class UploadMultiItemOut(BaseModel):
@@ -40,6 +54,7 @@ class DownloadTaskOut(BaseModel):
     created_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+
     class Config:
         from_attributes = True
 
@@ -97,8 +112,24 @@ class ModelItemOut(BaseModel):
     reviewed_at: Optional[datetime]
     notes: Optional[str]
 
+    files: List[FileAssetLite] = Field(default_factory=list)
+
     class Config:
         from_attributes = True
+
+class ModelItemLiteOut(BaseModel):
+    model_number: str
+    verify_status: str
+    reviewer: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+    files: List[FileAssetLite] = Field(default_factory=list)
+
+class ModelsPageOut(BaseModel):
+    items: List[ModelItemLiteOut]
+    total: int
+    page: int
+    page_size: int
 
 class ModelUpsertIn(BaseModel):
     input_voltage_range: Optional[str] = None

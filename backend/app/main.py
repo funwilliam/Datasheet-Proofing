@@ -123,6 +123,9 @@ templates_env = Environment(
     # 開發時可考慮 auto_reload=True
 )
 
+# 讓模板可以直接用 {{ url_for('static', path='...') }}
+templates_env.globals["url_for"] = app.url_path_for
+
 # 檔案大小顯示轉換器
 templates_env.filters["human_size"] = human_size
 
@@ -139,26 +142,17 @@ async def index(request: Request):
 async def tasks_page(request: Request):
     return render_template("tasks.html", {"request": request})
 
+@app.get("/models", response_class=HTMLResponse)
+def models_page(request: Request):
+    return render_template("models.html", {"request": request})
+
 @app.get("/files", response_class=HTMLResponse)
-async def files_page(request: Request, db: Session = Depends(get_db)):
-    files = db.query(FileAsset).order_by(FileAsset.created_at.desc()).all()
-
-    # 一次收集已有的 extraction JSON（stem 就是 file_hash）
-    existing_json_hashes = {p.stem for p in EXTRACT_DIR.glob("*.json")}
-    parsed_map = {f.file_hash: (f.file_hash in existing_json_hashes) for f in files}
-
-    return render_template(
-        "files.html",
-        {"request": request, "files": files, "parsed_map": parsed_map},
-    )
+async def files_page(request: Request):
+    return render_template("files.html", {"request": request})
 
 @app.get("/files/{file_hash}", response_class=HTMLResponse)
 async def file_detail(file_hash: str, request: Request, db: Session = Depends(get_db)):
-    fa = db.get(FileAsset, file_hash)
-    if not fa:
-        raise HTTPException(status_code=404, detail="file not found")
-    models = sorted(fa.models, key=lambda m: (m.model_number or ""))
-    return render_template("file_detail.html", {"request": request, "fa": fa, "models": models})
+    return render_template("file_detail.html", {"request": request})
 
 @app.get("/review/{file_hash}", response_class=HTMLResponse)
 async def review_file(request: Request, file_hash: str, db: Session = Depends(get_db)):

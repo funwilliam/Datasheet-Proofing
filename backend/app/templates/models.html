@@ -1,0 +1,377 @@
+{% extends 'base.html' %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="{{ url_for('static', path='css/spec_modal.css') }}">
+<style>
+  /* ==== Layout：與 files.html / tasks.html 對齊 ==== */
+  section{margin-top:14px}
+  .page-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .title-wrap h2{margin:0}
+
+  /* Buttons / inputs */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-size:14px;line-height:20px;text-decoration:none;cursor:pointer;border:1px solid transparent;background:#fff;color:#111827}
+  .btn:focus{outline:2px solid rgba(59,130,246,.5);outline-offset:2px}
+  .btn-primary{background:#111827;color:#fff;border-color:#111827}
+  .btn-primary:hover{filter:brightness(.95)}
+  .btn-outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
+  .btn-outline:hover{background:#f3f4f6}
+  .btn-danger{background:#fff;color:#b91c1c;border:1px solid #fecaca}
+  .btn-danger:hover{background:#fee2e2}
+  .btn-sm{padding:6px 10px;font-size:13px;border-radius:8px}
+  .input{border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:14px}
+  .select{border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:14px;background:#fff}
+
+  /* Tools bar */
+  .tools{margin-top:12px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .tools .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+
+  /* Table */
+  table.models{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:16px}
+  table.models th,table.models td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left}
+  table.models thead th{background:#f9fafb;font-weight:600;position:sticky;top:0;z-index:1}
+  .col-select{width:44px}
+  .col-model{width:auto}
+  .col-verified{width:110px}
+  .col-reviewer{width:160px}
+  .col-reviewed-at{width:200px}
+  .col-source{width:140px}
+  .col-ops{width:320px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;line-height:18px}
+  .badge-verified{background:#DCFCE7;color:#065F46}
+  .badge-unverified{background:#FEF3C7;color:#92400E}
+
+  /* Files modal list (共用 .modal 样式由 spec_modal.css 提供) */
+  .files-list{margin:8px 0 0;padding:0;list-style:none;max-height:360px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px}
+  .files-list li{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e5e7eb;gap:12px}
+  .files-list li:last-child{border-bottom:none}
+  .file-meta{color:#6b7280;font-size:12px}
+
+  /* Pagination */
+  .pagination{display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>型號清單</h2>
+
+  <div class="tools">
+    <input id="q" class="input" placeholder="搜尋型號（完整或部分）…">
+    <select id="status" class="select" title="驗證狀態">
+      <option value="">全部狀態</option>
+      <option value="verified">已驗證</option>
+      <option value="unverified">未驗證</option>
+    </select>
+    <button type="button" id="btnSearch" class="btn btn-outline">搜尋</button>
+
+    <div class="right">
+      <span id="selCount" class="badge" style="background:#F3F4F6;color:#374151">已選 0</span>
+      <button type="button" id="btnExport" class="btn btn-primary" disabled>匯出</button>
+      <button type="button" id="btnDelete" class="btn btn-danger" disabled>刪除選取</button>
+    </div>
+  </div>
+
+  <table class="models" id="tbl">
+    <colgroup>
+      <col class="col-select">
+      <col class="col-model">
+      <col class="col-verified">
+      <col class="col-reviewer">
+      <col class="col-reviewed-at">
+      <col class="col-source">
+      <col class="col-ops">
+    </colgroup>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="chkAll"></th>
+        <th>型號</th>
+        <th>已驗證？</th>
+        <th>校對者</th>
+        <th>校對時間</th>
+        <th>來源</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <div class="pagination">
+    <button type="button" id="prev" class="btn btn-outline">上一頁</button>
+    <span>第 <span id="page">1</span> / <span id="pages">1</span> 頁（共 <span id="total">0</span> 筆）</span>
+    <button type="button" id="next" class="btn btn-outline">下一頁</button>
+    <select id="pageSize" class="select" title="每頁筆數">
+      <option>20</option><option selected>50</option><option>100</option><option>200</option>
+    </select>
+  </div>
+</section>
+
+{# 共用：規格參數 Modal（抽出） #}
+{% include 'components/spec_modal.html' %}
+
+{# 頁面自有：關聯檔案 Modal #}
+<div id="filesModal" class="modal hidden">
+  <div class="modal-body">
+    <h3>關聯檔案 — <span id="filesTitle" class="mono"></span></h3>
+    <ul id="filesList" class="files-list"></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="filesClose">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- 匯出對話框 -->
+<dialog id="exportDlg">
+  <form method="dialog" style="min-width:440px">
+    <h3>匯出</h3>
+    <p>選擇匯出來源與格式：</p>
+    <label><input type="radio" name="src" value="selected" checked> 選取的型號</label><br>
+    <label><input type="radio" name="src" value="filtered"> 目前篩選結果（跨所有頁）</label>
+    <div style="margin-top:8px">
+      <label><input type="radio" name="fmt" value="csv" checked> CSV</label>
+      <label style="margin-left:12px"><input type="radio" name="fmt" value="json"> JSON</label>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+      <button type="button" class="btn btn-outline" id="exportCancel">取消</button>
+      <button type="button" class="btn btn-primary" id="exportOk">匯出</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='js/spec_modal.js') }}"></script>
+<script>
+const QS = (id) => document.getElementById(id);
+let page=1, pages=1, total=0, pageSize=50;
+let items=[]; let selected=new Set();
+
+/* ------- 小工具：同步「已選取數量」與按鈕狀態 ------- */
+function updateSelectionUI(){
+  const n = selected.size;
+  const c = document.getElementById('selCount');
+  const be = document.getElementById('btnExport');
+  const bd = document.getElementById('btnDelete');
+  if (c) c.textContent = `已選 ${n}`;
+  if (be) be.disabled = n === 0;
+  if (bd) bd.disabled = n === 0;
+}
+
+/* ------- API helpers ------- */
+function buildParams(){
+  const u = new URLSearchParams();
+  const q = QS('q').value.trim();
+  const status = QS('status').value;
+  if (q) u.set('q', q);
+  if (status) u.set('status', status);
+  u.set('page', String(page));
+  u.set('page_size', String(pageSize));
+  return u.toString();
+}
+async function load(){
+  const res = await fetch(`/api/models?${buildParams()}`);
+  if (!res.ok){ alert('查詢失敗：' + (await res.text().catch(()=>''))); return; }
+  const j = await res.json();
+  page=j.page; total=j.total; pageSize=j.page_size; pages=Math.max(1, Math.ceil(total/pageSize));
+  items=j.items||[];
+  renderTable();
+  QS('page').textContent=page; QS('pages').textContent=pages; QS('total').textContent=total;
+  updateSelectionUI();
+}
+async function fetchModel(m){ const r=await fetch(`/api/models/${encodeURIComponent(m)}`); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function patchModel(m,p){ const r=await fetch(`/api/models/${encodeURIComponent(m)}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+async function deleteModel(m){ const r=await fetch(`/api/models/${encodeURIComponent(m)}`,{method:'DELETE'}); if(!r.ok) throw new Error(await r.text()); }
+
+/* ------- UI ------- */
+function badgeYN(v){ const yes=(v==='verified'); return `<span class="badge ${yes?'badge-verified':'badge-unverified'}">${yes?'是':'否'}</span>`; }
+function fmtLocal(iso){ if(!iso) return ''; const d=new Date(iso); if(isNaN(d)) return iso; const pad=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;' }[c])); }
+
+function renderTable(){
+  const tb = QS('tbody'); tb.innerHTML='';
+  for (const it of items){
+    const tr=document.createElement('tr'); tr.dataset.model=it.model_number;
+    tr.innerHTML=`
+      <td><input type="checkbox" class="chkRow" data-id="${escapeHtml(it.model_number)}" ${selected.has(it.model_number)?'checked':''}></td>
+      <td class="mono">${escapeHtml(it.model_number)}</td>
+      <td>${badgeYN(it.verify_status)}</td>
+      <td>${escapeHtml(it.reviewer||'')}</td>
+      <td>${fmtLocal(it.reviewed_at)}</td>
+      <td><button type="button" class="btn btn-outline btn-sm btn-files" data-model="${escapeHtml(it.model_number)}">關聯檔案</button></td>
+      <td>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button type="button" class="btn btn-outline btn-sm btn-spec" data-model="${escapeHtml(it.model_number)}">規格參數</button>
+          <button type="button" class="btn btn-danger btn-sm btn-del" data-model="${escapeHtml(it.model_number)}">刪除型號</button>
+        </div>
+      </td>`;
+    tb.appendChild(tr);
+  }
+  // 勾選框
+  tb.querySelectorAll('.chkRow').forEach(ch=>{
+    ch.onchange=e=>{
+      const id=e.target.dataset.id;
+      if(e.target.checked) selected.add(id); else selected.delete(id);
+      updateSelectionUI();
+    };
+  });
+  // 規格參數（開共用 modal）
+  tb.querySelectorAll('.btn-spec').forEach(btn=>{
+    btn.onclick=()=> SpecModal.openFor(btn.dataset.model);
+  });
+  // 關聯檔案
+  tb.querySelectorAll('.btn-files').forEach(btn=>{
+    btn.onclick=()=> openFilesModalFor(btn.dataset.model);
+  });
+  // 刪除型號
+  tb.querySelectorAll('.btn-del').forEach(btn=>{
+    btn.onclick=async()=>{
+      const m=btn.dataset.model;
+      if(!confirm(`⚠️ 將刪除整個型號與其所有關聯。\n確定刪除：${m}？`)) return;
+      try{
+        await deleteModel(m);
+        selected.delete(m);
+        await load();
+        updateSelectionUI();
+      }catch(e){ alert('刪除失敗：'+(e?.message||e)); }
+    };
+  });
+
+  updateSelectionUI();
+}
+
+/* 查詢/分頁 */
+QS('btnSearch').onclick = ()=>{ page=1; load(); };
+QS('q').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); page=1; load(); } });
+QS('status').onchange = ()=>{ page=1; load(); };
+QS('prev').onclick = ()=>{ if(page>1){ page--; load(); } };
+QS('next').onclick = ()=>{ if(page<pages){ page++; load(); } };
+QS('pageSize').onchange = ()=>{ pageSize=parseInt(QS('pageSize').value||'50',10); page=1; load(); };
+QS('chkAll').onchange = e=>{
+  const on=e.target.checked;
+  items.forEach(it=>{ if(on) selected.add(it.model_number); else selected.delete(it.model_number); });
+  renderTable();
+  updateSelectionUI();
+};
+
+/* 初始化共用規格參數 Modal */
+SpecModal.setup({
+  fetchModel: async (m)=>{
+    const r=await fetch(`/api/models/${encodeURIComponent(m)}`);
+    if(!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  patchModel: async (m,p)=>{
+    const r=await fetch(`/api/models/${encodeURIComponent(m)}`,{
+      method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)
+    });
+    if(!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  onSaved: async ()=>{ await load(); } // 儲存後刷新列表
+});
+
+/* 關聯檔案 Modal 控制 */
+const filesModal=QS('filesModal'), filesTitle=QS('filesTitle'), filesList=QS('filesList');
+function openFilesModal(){ filesModal.classList.remove('hidden'); }
+function closeFilesModal(){ filesModal.classList.add('hidden'); }
+QS('filesClose').onclick = closeFilesModal;
+filesModal.addEventListener('click', e=>{ if(e.target===filesModal) closeFilesModal(); });
+
+async function openFilesModalFor(modelNumber){
+  try{
+    const r = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`);
+    if(!r.ok) throw new Error(await r.text());
+    const data = await r.json();
+
+    filesTitle.textContent = modelNumber;
+    filesList.innerHTML = '';
+    const list = Array.isArray(data.files)?data.files:[];
+    if (!list.length){
+      filesList.innerHTML = '<li><span class="file-meta">尚未建立任何關聯</span></li>';
+    }else{
+      for (const f of list){
+        const li=document.createElement('li');
+        li.innerHTML = `
+          <div>
+            <a href="/files/${encodeURIComponent(f.file_hash)}" class="mono">${(f.file_hash||'').slice(0,8)}</a>
+            <div class="file-meta">${(f.filename||'')}</div>
+          </div>
+          <a class="btn btn-outline btn-sm" href="/files/${encodeURIComponent(f.file_hash)}">查看詳情</a>
+        `;
+        filesList.appendChild(li);
+      }
+    }
+    openFilesModal();
+  }catch(e){ alert('讀取關聯檔案失敗：'+(e?.message||e)); }
+}
+
+/* 匯出（記住上次選擇） */
+QS('btnExport').onclick = () => {
+  const lastSrc = localStorage.getItem('export.src') || 'selected';
+  const lastFmt = localStorage.getItem('export.fmt') || 'csv';
+  const srcEl = document.querySelector(`input[name="src"][value="${lastSrc}"]`);
+  const fmtEl = document.querySelector(`input[name="fmt"][value="${lastFmt}"]`);
+  if (srcEl) srcEl.checked = true;
+  if (fmtEl) fmtEl.checked = true;
+  QS('exportDlg').showModal();
+};
+QS('exportCancel').onclick = (e)=>{ e.preventDefault(); QS('exportDlg').close(); };
+QS('exportOk').onclick = async (e)=>{
+  e.preventDefault();
+  const src = (document.querySelector('input[name="src"]:checked')||{}).value || 'selected';
+  const fmt = (document.querySelector('input[name="fmt"]:checked')||{}).value || 'csv';
+
+  localStorage.setItem('export.src', src);
+  localStorage.setItem('export.fmt', fmt);
+
+  QS('exportDlg').close();
+
+  let modelNumbers=[];
+  if (src==='selected'){
+    modelNumbers = Array.from(selected);
+    if(!modelNumbers.length){ alert('尚未選取任何型號'); return; }
+  }else{
+    modelNumbers = await collectAllModelNumbers();
+    if(!modelNumbers.length){ alert('目前篩選無資料'); return; }
+  }
+
+  const res = await fetch('/api/export/by-models', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ model_numbers:modelNumbers, fmt, preserve_order:true })
+  });
+  if(!res.ok){ alert('匯出失敗'); return; }
+  const blob = await res.blob();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(src==='selected'?'models_selected':'models_filtered')+(fmt==='csv'?'.csv':'.json');
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+};
+async function collectAllModelNumbers(){
+  const out=[]; let p=1;
+  while(true){
+    const u=new URLSearchParams(); const q=QS('q').value.trim(); const s=QS('status').value;
+    if(q) u.set('q', q); if(s) u.set('status', s);
+    u.set('page', String(p)); u.set('page_size', '200');
+    const res=await fetch(`/api/models?${u.toString()}`); if(!res.ok) break;
+    const j=await res.json(); const arr=j.items||[]; out.push(...arr.map(x=>x.model_number));
+    const total=j.total||0; const ps=j.page_size||arr.length||1; const pages=Math.max(1, Math.ceil(total/ps));
+    if(p>=pages) break; p++;
+  }
+  return out;
+}
+
+/* 批次刪除 */
+QS('btnDelete').onclick = async ()=>{
+  const ids=Array.from(selected); if(!ids.length){ alert('尚未選取任何型號'); return; }
+  if(!confirm(`將刪除 ${ids.length} 筆型號與其關聯，確定？`)) return;
+  let ok=0,fail=0; for(const m of ids){ try{ await deleteModel(m); ok++; }catch{ fail++; } }
+  alert(`刪除完成：成功 ${ok}、失敗 ${fail}`);
+  selected.clear();
+  await load();
+  updateSelectionUI();
+};
+
+/* Init */
+document.addEventListener('DOMContentLoaded', load);
+</script>
+{% endblock %}

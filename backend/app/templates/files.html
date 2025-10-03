@@ -2,7 +2,7 @@
 
 {% block head_extra %}
 <style>
-  /* ====== 既有：Modal 與表單樣式 ====== */
+  /* ====== Modal 與表單樣式（沿用） ====== */
   .modal.hidden{display:none}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
   .modal .modal-body{background:#fff;width:640px;max-width:92vw;border-radius:8px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
@@ -16,37 +16,40 @@
   .file-list .meta{color:#6b7280;font-size:12px}
   .btn-link{background:transparent;border:0;padding:0;color:#2563eb;cursor:pointer}
 
-  /* ====== 新增：檔案表格與按鈕樣式 ====== */
+  /* ====== 檔案表格與按鈕樣式 ====== */
   .files-actions{display:flex;align-items:center;gap:12px;margin:8px 0 6px;flex-wrap:wrap}
-  .files-table{width:100%;border-collapse:collapse;table-layout:fixed; margin-top:16px; }
+  .files-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:16px}
   .files-table th,.files-table td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left}
-  .files-table th{background:#f9fafb;font-weight:600}
-  /* 欄寬（搭配下方 colgroup） */
+  .files-table th{background:#f9fafb;font-weight:600;position:sticky;top:0;z-index:1}
+
   .col-select{width:44px}
   .col-hash{width:96px}
   .col-size{width:110px}
   .col-parsed{width:90px}
   .col-ops{width:220px}
-  /* 內容處理 */
+
   .cell-hash code{white-space:nowrap}
   .cell-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cell-size{white-space:nowrap;text-align:right}
   .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;line-height:18px}
   .badge-ok{background:#DCFCE7;color:#065F46}
   .badge-muted{background:#F3F4F6;color:#374151}
-  /* 操作按鈕不換行 */
+
   .row-tools{display:flex;gap:8px;flex-wrap:nowrap;align-items:center;justify-content:flex-start}
   .row-tools > *{white-space:nowrap}
 
-  /* 按鈕設計 */
   .btn{display:inline-block;padding:6px 10px;border-radius:8px;font-size:14px;line-height:20px;text-decoration:none;cursor:pointer}
   .btn:focus{outline:2px solid rgba(59,130,246,.5);outline-offset:2px}
   .btn-primary{background:#111827;color:#fff;border:1px solid #111827}
   .btn-primary:hover{filter:brightness(.95)}
   .btn-outline{background:#fff;color:#2563eb;border:1px solid #e5e7eb}
-  .btn-outline:visited, .btn-outline:hover{color:#2563eb}
+  .btn-outline:visited,.btn-outline:hover{color:#2563eb}
   .btn-outline:hover{background:#f3f4f6}
   .btn-sm{padding:4px 8px;font-size:13px;border-radius:7px}
+
+  /* 分頁列 */
+  .pager{display:flex;align-items:center;gap:10px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+  .select{border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;font-size:14px;background:#fff}
 </style>
 {% endblock %}
 
@@ -85,7 +88,7 @@
       <form id="urlBatchForm" method="post" action="/api/files/upload-urls" autocomplete="off">
         <textarea name="urls" placeholder="https://example.com/a.pdf&#10;https://example.com/b.pdf" style="width:520px;height:160px;"></textarea>
         <div style="margin:8px 0;">
-          <input type="text" name="hsd_name" list="hsdOptions" placeholder="站點(例如 Mouser/DigiKey/...)" style="width: 320px;" />
+          <input type="text" name="hsd_name" list="hsdOptions" placeholder="站點(例如 Mouser/DigiKey/...)" style="width:320px;" />
           <datalist id="hsdOptions">
             <option value="Mouser"></option>
             <option value="DigiKey"></option>
@@ -120,7 +123,7 @@
     <colgroup>
       <col class="col-select">
       <col class="col-hash">
-      <col>                 <!-- 檔名吃剩餘寬度 -->
+      <col> <!-- 檔名吃剩餘寬度 -->
       <col class="col-size">
       <col class="col-parsed">
       <col class="col-ops">
@@ -135,190 +138,279 @@
         <th>操作</th>
       </tr>
     </thead>
-    <tbody>
-      {% for f in files %}
-      <tr data-file-hash="{{ f.file_hash }}">
-        <td><input type="checkbox" class="chkRow" value="{{ f.file_hash }}" /></td>
-        <td class="cell-hash"><code>{{ f.file_hash[:8] }}</code></td>
-        <td class="cell-name" title="{{ f.filename }}">{{ f.filename }}</td>
-        <td class="cell-size">{{ (f.size_bytes)|human_size }}</td>
-        <td>
-          {% if parsed_map.get(f.file_hash) %}
-            <span class="badge badge-ok">是</span>
-          {% else %}
-            <span class="badge badge-muted">否</span>
-          {% endif %}
-        </td>
-        <td>
-          <div class="row-tools">
-            <a class="btn btn-outline btn-sm" href="/pdf/{{ f.file_hash }}" target="_blank" rel="noopener">開啟 PDF</a>
-            <a class="btn btn-outline btn-sm" href="/files/{{ f.file_hash }}">查看詳情</a>
-          </div>
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
+    <tbody id="filesTbody"><!-- 由 JS 動態渲染 --></tbody>
   </table>
+
+  <div class="pager">
+    <button type="button" id="prev" class="btn btn-outline">上一頁</button>
+    <span>第 <span id="page">1</span> / <span id="pages">1</span> 頁（共 <span id="total">0</span> 筆）</span>
+    <button type="button" id="next" class="btn btn-outline">下一頁</button>
+    <select id="pageSize" class="select" title="每頁筆數">
+      <option>20</option><option selected>50</option><option>100</option><option>200</option>
+    </select>
+  </div>
 </section>
 {% endblock %}
 
 {% block scripts %}
 <script>
-  /* ====== Modal 與上傳/URL 既有互動（保留） ====== */
-  const uploadModal = document.getElementById('uploadModal');
-  const urlModal = document.getElementById('urlModal');
+/* ========= 狀態 ========= */
+let page = 1, pages = 1, total = 0, pageSize = 50;
+let items = [];
+const selected = new Set(); // 跨頁維持勾選
 
-  document.getElementById('openUploadModal').onclick = () => uploadModal.classList.remove('hidden');
-  document.getElementById('openUrlModal').onclick = () => urlModal.classList.remove('hidden');
+/* ========= 小工具 ========= */
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const escapeHtml = (s) => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const humanSize = (n) => {
+  const v = Number(n||0); if (!isFinite(v) || v<0) return '-';
+  const units = ['B','KB','MB','GB','TB','PB']; let val=v, i=0;
+  while (val>=1000 && i<units.length-1){ val/=1000; i++; }
+  const num = (Math.round(val*10)/10).toString();
+  return `${num}${num.includes('.')?'':' '} ${units[i]}`;
+};
 
-  Array.from(document.querySelectorAll('.modal .close')).forEach(btn => {
-    btn.onclick = (e) => {
-      const modal = e.target.closest('.modal');
-      modal.classList.add('hidden');
-      if (modal.id === 'uploadModal') {
-        fileMap.clear();
-        renderFileList();
-      }
-      if (modal.id === 'urlModal') {
-        modal.querySelector('textarea[name="urls"]').value = '';
-        modal.querySelector('input[name="hsd_name"]').value = '';
-        document.getElementById('urlBatchMsg').textContent = '';
-      }
-    };
-  });
-  [uploadModal, urlModal].forEach(m => {
-    m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { uploadModal.classList.add('hidden'); urlModal.classList.add('hidden'); }
-  });
+/* ========= API ========= */
+/* 後端回傳結構假定為：
+   { items:[{file_hash, filename, size_bytes, parsed}], total, page, page_size } */
+async function fetchPage(p=1, ps=50){
+  const u = new URLSearchParams({ page:String(p), page_size:String(ps) });
+  const res = await fetch(`/api/files?${u.toString()}`);
+  if (!res.ok) throw new Error(await res.text().catch(()=>`HTTP ${res.status}`));
+  return res.json();
+}
 
-  // 上傳多檔（疊加/可移除/可清空）
-  const uploadMultiForm = document.getElementById('uploadMultiForm');
-  const uploadInput = document.getElementById('uploadFiles');
-  const fileListEl = document.getElementById('fileList');
-  const clearAllBtn = document.getElementById('clearAllBtn');
-
-  const fileMap = new Map();
-  const fileKey = f => `${f.name}::${f.size}::${f.lastModified}`;
-
-  function renderFileList() {
-    fileListEl.innerHTML = '';
-    for (const [k, f] of fileMap) {
-      const li = document.createElement('li');
-      li.innerHTML = `
-        <span>${f.name} <span class="meta">(${(f.size / 1024).toFixed(1)} KB)</span></span>
-        <button type="button" class="btn-link remove" data-k="${k}">移除</button>
-      `;
-      fileListEl.appendChild(li);
-    }
-    fileListEl.querySelectorAll('button.remove').forEach(btn => {
-      btn.onclick = () => { fileMap.delete(btn.dataset.k); renderFileList(); };
-    });
+/* ========= Render ========= */
+function renderTable() {
+  const tb = $("#filesTbody");
+  tb.innerHTML = '';
+  for (const f of items){
+    const tr = document.createElement('tr');
+    tr.dataset.fileHash = f.file_hash;
+    tr.innerHTML = `
+      <td><input type="checkbox" class="chkRow" value="${escapeHtml(f.file_hash)}" ${selected.has(f.file_hash)?'checked':''}></td>
+      <td class="cell-hash"><code>${escapeHtml((f.file_hash||'').slice(0,8))}</code></td>
+      <td class="cell-name" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</td>
+      <td class="cell-size">${humanSize(f.size_bytes)}</td>
+      <td>${f.parsed ? '<span class="badge badge-ok">是</span>' : '<span class="badge badge-muted">否</span>'}</td>
+      <td>
+        <div class="row-tools">
+          <a class="btn btn-outline btn-sm" href="/pdf/${encodeURIComponent(f.file_hash)}" target="_blank" rel="noopener">開啟 PDF</a>
+          <a class="btn btn-outline btn-sm" href="/files/${encodeURIComponent(f.file_hash)}">查看詳情</a>
+        </div>
+      </td>
+    `;
+    tb.appendChild(tr);
   }
 
-  uploadInput.addEventListener('change', () => {
-    Array.from(uploadInput.files || []).forEach(f => {
-      const k = fileKey(f);
-      if (!fileMap.has(k)) fileMap.set(k, f);
+  // 綁勾選
+  tb.querySelectorAll('.chkRow').forEach(ch => {
+    ch.addEventListener('change', (e) => {
+      const h = e.target.value;
+      if (e.target.checked) selected.add(h); else selected.delete(h);
+      syncChkAll();
+      updateActionButtons();
     });
-    uploadInput.value = '';  // 允許重選同批檔案
-    renderFileList();
   });
 
-  clearAllBtn.onclick = () => { fileMap.clear(); renderFileList(); };
+  syncChkAll();
+  updateActionButtons();
+}
 
-  uploadMultiForm.onsubmit = async (e) => {
-    e.preventDefault();
-    if (!fileMap.size) { alert('尚未選擇檔案'); return; }
-    const fd = new FormData();
-    for (const f of fileMap.values()) fd.append('files', f, f.name);
-    const res = await fetch(uploadMultiForm.action, { method: 'POST', body: fd });
-    const json = await res.json();
-    document.getElementById('uploadMultiMsg').textContent = `已上傳 ${json.uploaded} 檔案`;
-    fileMap.clear(); renderFileList();
+function updatePager(){
+  $("#page").textContent = String(page);
+  $("#pages").textContent = String(pages);
+  $("#total").textContent = String(total);
+  $("#pageSize").value = String(pageSize);
+}
+
+function syncChkAll(){
+  const rows = $$('#filesTbody .chkRow');
+  const allOn = rows.length>0 && rows.every(x => x.checked);
+  $("#chkAll").checked = allOn;
+}
+
+function updateActionButtons(){
+  $("#btnExtractSelected").disabled = (selected.size === 0);
+}
+
+/* ========= 行為 ========= */
+async function load(p=1){
+  try{
+    const data = await fetchPage(p, pageSize);
+    page = data.page;
+    total = data.total;
+    pageSize = data.page_size;
+    pages = Math.max(1, Math.ceil(total / pageSize));
+    items = Array.isArray(data.items) ? data.items : [];
+    renderTable();
+    updatePager();
+  }catch(e){
+    alert('載入清單失敗：' + (e?.message || e));
+  }
+}
+
+$("#prev").onclick = () => { if (page > 1) { load(page - 1); } };
+$("#next").onclick = () => { if (page < pages) { load(page + 1); } };
+$("#pageSize").onchange = () => { pageSize = parseInt($("#pageSize").value || '50', 10) || 50; load(1); };
+
+$("#chkAll").addEventListener('change', (e) => {
+  const on = e.target.checked;
+  $$('#filesTbody .chkRow').forEach(ch => {
+    ch.checked = on;
+    const h = ch.value;
+    if (on) selected.add(h); else selected.delete(h);
+  });
+  updateActionButtons();
+});
+
+/* ====== Modal: 開關 ====== */
+const uploadModal = $('#uploadModal');
+const urlModal = $('#urlModal');
+
+$('#openUploadModal').onclick = () => uploadModal.classList.remove('hidden');
+$('#openUrlModal').onclick = () => urlModal.classList.remove('hidden');
+
+Array.from(document.querySelectorAll('.modal .close')).forEach(btn => {
+  btn.onclick = (e) => {
+    const modal = e.target.closest('.modal');
+    modal.classList.add('hidden');
+    if (modal.id === 'uploadModal') {
+      fileMap.clear(); renderFileList();
+      $('#uploadMultiMsg').textContent = '';
+    }
+    if (modal.id === 'urlModal') {
+      modal.querySelector('textarea[name="urls"]').value = '';
+      modal.querySelector('input[name="hsd_name"]').value = '';
+      $('#urlBatchMsg').textContent = '';
+    }
   };
+});
+[uploadModal, urlModal].forEach(m => {
+  m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') { uploadModal.classList.add('hidden'); urlModal.classList.add('hidden'); }
+});
 
-  // URL 批量
-  const urlBatchForm = document.getElementById('urlBatchForm');
-  urlBatchForm && (urlBatchForm.onsubmit = async (e) => {
-    e.preventDefault();
-    const fd = new FormData();
-    const raw = urlBatchForm.querySelector('textarea[name="urls"]').value || '';
-    const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-    for (const u of lines) fd.append('urls', u);
-    const site = urlBatchForm.querySelector('input[name="hsd_name"]').value || '';
-    if (site) fd.append('hsd_name', site);
-    const res = await fetch(urlBatchForm.action, { method: 'POST', body: fd });
-    const json = await res.json();
-    document.getElementById('urlBatchMsg').textContent = `已建立 ${json.queued} 個下載任務（前往「下載任務」頁面查看進度）`;
-  });
+/* ====== 上傳多檔：疊加/可移除/可清空，成功後刷新第 1 頁 ====== */
+const uploadMultiForm = $('#uploadMultiForm');
+const uploadInput = $('#uploadFiles');
+const fileListEl = $('#fileList');
+const clearAllBtn = $('#clearAllBtn');
 
-  /* ====== 批量加入解析（逐一呼叫 /api/tasks/queue） ====== */
-  const $ = (s, r=document) => r.querySelector(s);
-  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const fileMap = new Map();
+const fileKey = f => `${f.name}::${f.size}::${f.lastModified}`;
 
-  async function enqueueOne(hash, forceRerun) {
-    const resp = await fetch("/api/tasks/queue", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ file_hashes: [hash], force_rerun: !!forceRerun }),
-    });
-    if (!resp.ok) {
-      let msg = `HTTP ${resp.status}`;
-      try { const j = await resp.json(); if (j.detail) msg = j.detail; } catch {}
-      throw new Error(msg);
-    }
-    return resp.json();
+function renderFileList() {
+  fileListEl.innerHTML = '';
+  for (const [k, f] of fileMap) {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <span>${escapeHtml(f.name)} <span class="meta">(${(f.size/1024).toFixed(1)} KB)</span></span>
+      <button type="button" class="btn-link remove" data-k="${k}">移除</button>
+    `;
+    fileListEl.appendChild(li);
   }
-
-  // 全選
-  const chkAll = $("#chkAll");
-  chkAll?.addEventListener("change", (e) => {
-    const on = e.target.checked;
-    $$(".chkRow").forEach(ch => ch.checked = on);
+  fileListEl.querySelectorAll('button.remove').forEach(btn => {
+    btn.onclick = () => { fileMap.delete(btn.dataset.k); renderFileList(); };
   });
-  $$(".chkRow").forEach(ch => {
-    ch.addEventListener("change", () => {
-      const rows = $$(".chkRow");
-      chkAll.checked = rows.length > 0 && rows.every(x => x.checked);
-    });
+}
+
+uploadInput.addEventListener('change', () => {
+  Array.from(uploadInput.files || []).forEach(f => {
+    const k = fileKey(f);
+    if (!fileMap.has(k)) fileMap.set(k, f);
   });
+  uploadInput.value = '';   // 允許重選同批檔案
+  renderFileList();
+});
+clearAllBtn.onclick = () => { fileMap.clear(); renderFileList(); };
 
-  // 逐一呼叫（序列化）
-  $("#btnExtractSelected")?.addEventListener("click", async () => {
-    const selected = $$(".chkRow").filter(ch => ch.checked).map(ch => ch.value);
-    if (selected.length === 0) { alert("請先選擇至少一個檔案"); return; }
-    const forceRerun = $("#chkForceRerun")?.checked || false;
+uploadMultiForm.onsubmit = async (e) => {
+  e.preventDefault();
+  if (!fileMap.size) { alert('尚未選擇檔案'); return; }
+  const fd = new FormData();
+  for (const f of fileMap.values()) fd.append('files', f, f.name);
+  const res = await fetch(uploadMultiForm.action, { method: 'POST', body: fd });
+  if (!res.ok){ alert('上傳失敗'); return; }
+  const json = await res.json().catch(()=>({uploaded:0}));
+  $('#uploadMultiMsg').textContent = `已上傳 ${json.uploaded||0} 檔案`;
+  // 成功後刷新第 1 頁、關閉 modal、清空暫存
+  await load(1);
+  uploadModal.classList.add('hidden');
+  fileMap.clear(); renderFileList();
+};
 
-    const btn = $("#btnExtractSelected");
-    const originalText = btn.textContent;
-    btn.disabled = true;
+/* ====== URL 批量：成功後刷新第 1 頁 ====== */
+const urlBatchForm = $('#urlBatchForm');
+urlBatchForm && (urlBatchForm.onsubmit = async (e) => {
+  e.preventDefault();
+  const fd = new FormData();
+  const raw = urlBatchForm.querySelector('textarea[name="urls"]').value || '';
+  const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  if (!lines.length){ alert('請輸入至少一個 URL'); return; }
+  for (const u of lines) fd.append('urls', u);
+  const site = urlBatchForm.querySelector('input[name="hsd_name"]').value || '';
+  if (site) fd.append('hsd_name', site);
 
-    let ok = 0, fail = 0, errors = [];
-    for (let i = 0; i < selected.length; i++) {
-      const h = selected[i];
-      btn.textContent = `加入解析中 ${i+1}/${selected.length}…`;
-      try {
-        await enqueueOne(h, forceRerun);
-        ok++;
-      } catch (e) {
-        fail++;
-        errors.push(`${h}: ${e?.message || e}`);
-        // 若要遇錯即停：break;
-      }
-      // 需要節流時可打開：await new Promise(r => setTimeout(r, 30));
+  const res = await fetch(urlBatchForm.action, { method: 'POST', body: fd });
+  if (!res.ok){ alert('建立下載任務失敗'); return; }
+  const json = await res.json().catch(()=>({queued:0}));
+  $('#urlBatchMsg').textContent = `已建立 ${json.queued||0} 個下載任務（前往「下載任務」頁面查看進度）`;
+
+  // 成功後刷新第 1 頁並關閉 modal（下載完成後才會出現在清單，但先更新也無妨）
+  await load(1);
+  urlModal.classList.add('hidden');
+  urlBatchForm.reset();
+});
+
+/* ====== 批量加入解析（序列化） ====== */
+async function enqueueOne(hash, forceRerun) {
+  const resp = await fetch("/api/tasks/queue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_hashes: [hash], force_rerun: !!forceRerun }),
+  });
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`;
+    try { const j = await resp.json(); if (j.detail) msg = j.detail; } catch {}
+    throw new Error(msg);
+  }
+  return resp.json();
+}
+
+$("#btnExtractSelected")?.addEventListener("click", async () => {
+  const arr = Array.from(selected);
+  if (arr.length === 0) { alert("請先選擇至少一個檔案"); return; }
+  const forceRerun = $("#chkForceRerun")?.checked || false;
+
+  const btn = $("#btnExtractSelected");
+  const originalText = btn.textContent;
+  btn.disabled = true;
+
+  let ok = 0, fail = 0, errors = [];
+  for (let i = 0; i < arr.length; i++) {
+    const h = arr[i];
+    btn.textContent = `加入解析中 ${i+1}/${arr.length}…`;
+    try {
+      await enqueueOne(h, forceRerun);
+      ok++;
+    } catch (e) {
+      fail++; errors.push(`${h}: ${e?.message || e}`);
     }
+  }
+  btn.disabled = false;
+  btn.textContent = originalText;
 
-    btn.disabled = false;
-    btn.textContent = originalText;
+  if (fail === 0) alert(`成功加入解析：${ok} 筆`);
+  else alert(`成功：${ok}，失敗：${fail}\n——\n${errors.slice(0,5).join("\n")}${errors.length>5?"\n...(more)":""}`);
 
-    if (fail === 0) {
-      alert(`成功加入解析：${ok} 筆`);
-    } else {
-      alert(`成功：${ok}，失敗：${fail}\n——\n${errors.slice(0,5).join("\n")}${errors.length>5?"\n...(more)":""}`);
-    }
-    location.reload();
-  });
+  // 不重整頁面；若想即時看到 parsed 狀態變化，可定時輪詢另外的任務頁或定時 reload。
+});
+
+/* ====== Init ====== */
+document.addEventListener('DOMContentLoaded', () => load(1));
 </script>
 {% endblock %}

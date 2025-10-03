@@ -64,7 +64,7 @@
 
 {% block content %}
 <div class="page-title">
-  <h2 style="margin:0">
+  <h2>
     校對：{{ fa.filename }}
     <small style="color:#6b7280">(<code>{{ fa.file_hash }}</code>)</small>
   </h2>
@@ -93,7 +93,7 @@
 
       <div class="toolbar-right">
         <label style="font-size:13px;color:#374151">當前驗證者</label>
-        <input id="globalReviewer" class="input" placeholder="例如：Allen / QA-03" style="min-width:220px">
+        <input id="globalReviewer" class="input" placeholder="例如：王小明" style="min-width:220px">
         <button id="saveAllBtn" class="btn btn-primary">儲存全部變更</button>
       </div>
     </div>
@@ -474,9 +474,15 @@
       td.addEventListener('keydown', (e) => {
         if (!editingNow) return;
 
-        if (field === 'applications' && e.key === 'Enter' && e.shiftKey){
+        if (field==='applications' && e.key==='Enter' && e.shiftKey){
           e.preventDefault();
-          document.execCommand('insertLineBreak'); // 在 caret 插入換行
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount){
+            const r = sel.getRangeAt(0);
+            r.deleteContents();
+            r.insertNode(document.createTextNode('\n'));
+            r.collapse(false);
+          }
           return;
         }
         if (e.key === 'Enter'){ e.preventDefault(); leaveEdit(true); }
