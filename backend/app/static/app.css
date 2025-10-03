@@ -3,12 +3,16 @@ body {
   margin: 0;
 }
 
-a,
-a:visited,
+a {
+  color: #2563eb;
+  text-decoration: none;
+}
+a:visited {
+  color: #2563eb;   /* 與 a 相同 → 不變色 */
+}
 a:hover,
 a:active {
-  color: #2563eb;          /* 或改成固定色，例如 #2563eb */
-  text-decoration: none;   /* 移除底線 */
+  color: #1d4ed8;   /* 可選：滑過更深一點 */
 }
 
 .topbar {

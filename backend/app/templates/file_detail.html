@@ -1,42 +1,425 @@
 {% extends 'base.html' %}
 
-{% block content %}
-<h2>檔案：{{ fa.filename }} (<code>{{ fa.file_hash }}</code>)</h2>
-<p>
-  <a href="/pdf/{{ fa.file_hash }}" target="_blank">開啟 PDF</a>
-  &nbsp;|&nbsp;
-  <button id="queueBtn">加入解析佇列</button>
-  <label><input type="checkbox" id="forceRerun"> 強制重跑</label>
-</p>
+{% block head_extra %}
+<style>
+  /* Header / title */
+  .page-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .title-wrap{display:flex;flex-direction:column;gap:6px}
+  .title-wrap h2{margin:0}
+  .submeta{color:#6b7280;font-size:13px}
 
-<h3>已擷取的型號</h3>
-<table>
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-size:14px;line-height:20px;text-decoration:none;cursor:pointer;border:1px solid transparent;background:#fff;color:#111827}
+  .btn:focus{outline:2px solid rgba(59,130,246,.5);outline-offset:2px}
+  .btn-primary{background:#111827;color:#fff;border-color:#111827}
+  .btn-primary:hover{filter:brightness(.95)}
+  .btn-outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
+  .btn-outline:hover{background:#f3f4f6}
+  .btn-danger{background:#fff;color:#b91c1c;border:1px solid #fecaca}
+  .btn-danger:hover{background:#fee2e2}
+  .btn-sm{padding:6px 10px;font-size:13px;border-radius:8px}
+
+  /* File action bar */
+  .file-actions{margin-top:12px;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .file-actions .sp{width:1px;height:22px;background:#e5e7eb}
+  .help{color:#6b7280;font-size:12px}
+
+  /* Table */
+  table.models{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:16px}
+  table.models th,table.models td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left}
+  table.models th{background:#f9fafb;font-weight:600}
+  .col-id{width:76px}
+  .col-model{width:auto}
+  .col-status{width:110px}
+  .col-files{width:220px}
+  .col-ops{width:380px}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;line-height:18px}
+  .badge-verified{background:#DCFCE7;color:#065F46}
+  .badge-unverified{background:#FEF3C7;color:#92400E}
+
+  /* Modal (shared) */
+  .modal.hidden{display:none}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .modal .modal-body{
+    width:min(760px,94vw);          /* keep it within viewport */
+    background:#fff;border-radius:10px;padding:16px 16px 12px;
+    box-shadow:0 12px 40px rgba(0,0,0,.25)
+  }
+  .modal h3{margin:0 0 10px}
+  .modal .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+
+  /* Spec form */
+  .form-grid{
+    display:grid;
+    grid-template-columns:160px minmax(0,1fr); /* critical: prevent overflow */
+    gap:10px 12px;
+  }
+  .form-grid label{display:flex;align-items:center;color:#374151}
+  .form-grid input[type="text"],
+  .form-grid textarea{
+    width:100%;
+    min-width:0;                    /* critical: allow grid item to shrink */
+    box-sizing:border-box;          /* include padding/border in width */
+    border:1px solid #e5e7eb;border-radius:8px;padding:8px 10px;font-size:14px
+  }
+  .form-grid textarea{min-height:64px;resize:vertical}
+  .form-grid .full{grid-column:1 / -1} /* utility: span two columns */
+
+  /* Files modal list */
+  .files-list{margin:8px 0 0;padding:0;list-style:none;max-height:340px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px}
+  .files-list li{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #e5e7eb;gap:12px}
+  .files-list li:last-child{border-bottom:none}
+  .file-meta{color:#6b7280;font-size:12px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#f3f4f6;font-size:12px}
+  .is-current{background:#DBEAFE;color:#1E3A8A}
+
+  /* Responsive: stack fields on small screens */
+  @media (max-width:640px){
+    .form-grid{grid-template-columns:1fr}
+    .form-grid label{font-weight:600}
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="title-wrap">
+    <h2>檔案：{{ fa.filename }}</h2>
+    <div class="submeta">
+      hash: <code class="mono">{{ fa.file_hash }}</code>
+    </div>
+  </div>
+</div>
+
+<div class="file-actions">
+  <a class="btn btn-outline" href="/pdf/{{ fa.file_hash }}" target="_blank" rel="noopener">開啟 PDF</a>
+  <div class="sp"></div>
+  <a id="reviewAllBtn" class="btn btn-outline" href="/review/{{ fa.file_hash }}">校對（整份）</a>
+  <div class="sp"></div>
+  <button id="queueBtn" class="btn btn-primary">加入解析佇列</button>
+  <label class="help" title="若已存在解析結果，仍重新解析">
+    <input type="checkbox" id="forceRerun"> 強制重跑
+  </label>
+</div>
+
+<h3 style="margin-top:18px;">已擷取的型號</h3>
+<table class="models">
+  <colgroup>
+    <col class="col-id">
+    <col class="col-model">
+    <col class="col-status">
+    <col class="col-files">
+    <col class="col-ops">
+  </colgroup>
   <thead>
     <tr>
       <th>ID</th>
-      <th>Model Number</th>
-      <th>Status</th>
+      <th>型號</th>
+      <th>狀態</th>
+      <th>來源</th>
       <th>操作</th>
     </tr>
   </thead>
   <tbody id="modelsBody">
     {% for m in models %}
-    <tr>
-      <td>{{ m.id }}</td>
-      <td>{{ m.model_number }}</td>
-      <td>{{ m.verify_status }}</td>
-      <td><a href="/review/{{ m.id }}">校對</a></td>
+    <tr data-model="{{ m.model_number }}">
+      <td class="mono">{{ m.id }}</td>
+      <td class="mono">{{ m.model_number }}</td>
+      <td>
+        {% if m.verify_status == 'verified' %}
+          <span class="badge badge-verified">verified</span>
+        {% else %}
+          <span class="badge badge-unverified">unverified</span>
+        {% endif %}
+      </td>
+      <td>
+        <button class="btn btn-outline btn-sm btn-files" data-model="{{ m.model_number }}">關聯檔案</button>
+      </td>
+      <td>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-outline btn-sm btn-edit" data-model="{{ m.model_number }}">規格參數</button>
+          <button class="btn btn-outline btn-sm btn-unlink" data-model="{{ m.model_number }}">解除關聯</button>
+          <button class="btn btn-danger btn-sm btn-delete" data-model="{{ m.model_number }}">刪除型號</button>
+        </div>
+      </td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
+<!-- 規格參數 Modal（原有，保留） -->
+<div id="specModal" class="modal hidden">
+  <div class="modal-body">
+    <h3>規格參數編輯 — <span id="specTitle" class="mono"></span></h3>
+
+    <!-- 狀態列（新增：顯示目前驗證狀態與提示） -->
+    <div id="specStatus" style="margin:6px 0 12px;"></div>
+
+    <form id="specForm" autocomplete="off">
+      <div class="form-grid">
+        <label>Input Voltage Range</label>
+        <input type="text" name="input_voltage_range" placeholder="如：4.5~9 VDC">
+        <label>Output Voltage</label>
+        <input type="text" name="output_voltage" placeholder="如：5 VDC 或 ±5 VDC">
+        <label>Output Power</label>
+        <input type="text" name="output_power" placeholder="如：2 W">
+        <label>Package</label>
+        <input type="text" name="package" placeholder="如：SIP7 / DIP8">
+        <label>I/O Isolation</label>
+        <input type="text" name="isolation" placeholder="如：1500 VDC">
+        <label>Insulation System</label>
+        <input type="text" name="insulation" placeholder="如：Reinforced / Basic">
+        <label>Applications</label>
+        <input type="text" name="applications" placeholder="以逗號分隔，如：Medical, Industrial, IoT">
+        <div class="help full">會儲存為多個標籤</div>
+        <label>Dimension</label>
+        <input type="text" name="dimension" placeholder="如：22.0 x 9.0 x 12.3 mm">
+        <label>備註</label>
+        <textarea name="notes" placeholder="校對備註"></textarea>
+      </div>
+
+      <!-- 驗證控制（新增） -->
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <label class="help"><input type="checkbox" id="chkVerified"> 標記為已驗證</label>
+        <input id="reviewerInp" type="text" placeholder="驗證者" style="border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;font-size:14px">
+        <span id="verifiedHint" class="help"></span>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" id="specCancel">取消</button>
+        <button type="submit" class="btn btn-primary">儲存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 關聯檔案 Modal（新增） -->
+<div id="filesModal" class="modal hidden">
+  <div class="modal-body" style="max-width:720px">
+    <h3>關聯檔案 — <span id="filesTitle" class="mono"></span></h3>
+    <ul id="filesList" class="files-list"></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-outline" id="filesClose">關閉</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
 <script>
   const fileHash = "{{ fa.file_hash }}";
+
+  // ── 入列解析
   document.getElementById('queueBtn').onclick = async () => {
     const force = document.getElementById('forceRerun').checked;
-    await fetch('/api/tasks/queue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_hashes: [fileHash], force_rerun: force }) });
-    alert('已加入佇列');
+    const resp = await fetch('/api/tasks/queue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_hashes: [fileHash], force_rerun: force })
+    });
+    if (!resp.ok) {
+      const t = await resp.text().catch(()=> '');
+      alert('加入佇列失敗：' + t);
+      return;
+    }
+    alert('已加入解析佇列');
   };
+
+  // ── Utils
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+  // ── 規格參數 Modal 控制
+  const specModal = $('#specModal');
+  const specTitle = $('#specTitle');
+  const specForm  = $('#specForm');
+  const specStatus = $('#specStatus');
+  const chkVerified = $('#chkVerified');
+  const reviewerInp = $('#reviewerInp');
+
+  function openSpecModal(){ specModal.classList.remove('hidden'); }
+  function closeSpecModal(){ specModal.classList.add('hidden'); }
+  $('#specCancel').addEventListener('click', closeSpecModal);
+  specModal.addEventListener('click', (e) => { if (e.target === specModal) closeSpecModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSpecModal(); });
+
+  // ── 關聯檔案 Modal 控制（新增）
+  const filesModal = $('#filesModal');
+  const filesTitle = $('#filesTitle');
+  const filesList  = $('#filesList');
+  function openFilesModal(){ filesModal.classList.remove('hidden'); }
+  function closeFilesModal(){ filesModal.classList.add('hidden'); }
+  $('#filesClose').addEventListener('click', closeFilesModal);
+  filesModal.addEventListener('click', (e) => { if (e.target === filesModal) closeFilesModal(); });
+
+  // 將 ModelItemOut 填入表單
+  function fillSpecForm(data){
+    specForm.elements['input_voltage_range'].value = data.input_voltage_range || '';
+    specForm.elements['output_voltage'].value      = data.output_voltage || '';
+    specForm.elements['output_power'].value        = data.output_power || '';
+    specForm.elements['package'].value             = data.package || '';
+    specForm.elements['isolation'].value           = data.isolation || '';
+    specForm.elements['insulation'].value          = data.insulation || '';
+    specForm.elements['dimension'].value           = data.dimension || '';
+    specForm.elements['notes'].value               = data.notes || '';
+    const apps = Array.isArray(data.applications) ? data.applications.join(', ') : '';
+    specForm.elements['applications'].value        = apps;
+
+    // 審核狀態
+    chkVerified.checked = (data.verify_status === 'verified');
+    reviewerInp.value   = data.reviewer || '';
+
+    const statusBadge = (data.verify_status === 'verified')
+      ? '<span class="badge badge-verified">目前狀態：verified</span>'
+      : '<span class="badge badge-unverified">目前狀態：unverified</span>';
+
+    const reviewedAt = data.reviewed_at
+      ? `　<span class="help">於 ${new Date(data.reviewed_at).toLocaleString()} 驗證</span>`
+      : '';
+
+    specStatus.innerHTML = statusBadge + reviewedAt;
+    $('#verifiedHint').textContent = data.reviewed_at
+      ? `上次驗證：${new Date(data.reviewed_at).toLocaleString()}`
+      : '';
+  }
+
+  // 讀取單一型號
+  async function fetchModel(modelNumber){
+    const resp = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`);
+    if (!resp.ok) throw new Error(await resp.text());
+    return await resp.json();
+  }
+
+  // 更新單一型號
+  async function patchModel(modelNumber, payload){
+    const resp = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`, {
+      method: 'PATCH',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    return await resp.json();
+  }
+
+  // 解除關聯
+  async function unlinkModel(modelNumber){
+    const resp = await fetch(`/api/files/${encodeURIComponent(fileHash)}/models/${encodeURIComponent(modelNumber)}`, {
+      method: 'DELETE'
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+  }
+
+  // 刪除型號（整個 ModelItem）
+  async function deleteModel(modelNumber){
+    const resp = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`, { method: 'DELETE' });
+    if (!resp.ok) throw new Error(await resp.text());
+  }
+
+  // 綁定每列按鈕
+  function bindRowActions(tr){
+    const model = tr.dataset.model;
+
+    // 規格參數（編輯）
+    tr.querySelector('.btn-edit')?.addEventListener('click', async () => {
+      try{
+        const data = await fetchModel(model);
+        specTitle.textContent = model;
+        fillSpecForm(data);
+        specForm.dataset.model = model;
+        openSpecModal();
+      }catch(e){
+        alert('讀取型號失敗：' + (e?.message || e));
+      }
+    });
+
+    // 關聯檔案（來源）
+    tr.querySelector('.btn-files')?.addEventListener('click', async () => {
+      try{
+        const data = await fetchModel(model);
+        filesTitle.textContent = model;
+
+        filesList.innerHTML = '';
+        const list = Array.isArray(data.files) ? data.files : [];
+        if (list.length === 0){
+          filesList.innerHTML = '<li><span class="help">尚未建立關聯</span></li>';
+        } else {
+          for (const f of list){
+            const isCurrent = f.file_hash === fileHash;
+            const li = document.createElement('li');
+            li.innerHTML = `
+              <div>
+                <a href="/files/${encodeURIComponent(f.file_hash)}" class="mono">${(f.file_hash||'').slice(0,8)}</a>
+                <div class="file-meta">${(f.filename||'')}</div>
+              </div>
+              <span class="pill ${isCurrent?'is-current':''}">${isCurrent ? '這一份' : '其他檔案'}</span>
+            `;
+            filesList.appendChild(li);
+          }
+        }
+        openFilesModal();
+      }catch(e){
+        alert('讀取關聯檔案失敗：' + (e?.message || e));
+      }
+    });
+
+    // 解除關聯
+    tr.querySelector('.btn-unlink')?.addEventListener('click', async () => {
+      if (!confirm(`確定要解除關聯？\n型號：${model}\n檔案：${fileHash.slice(0,8)}…`)) return;
+      try{
+        await unlinkModel(model);
+        tr.remove();
+      }catch(e){
+        alert('解除關聯失敗：' + (e?.message || e));
+      }
+    });
+
+    // 刪除型號
+    tr.querySelector('.btn-delete')?.addEventListener('click', async () => {
+      if (!confirm(`⚠️ 這會刪除整個型號（包含與所有檔案的關聯）。\n確定刪除：${model} ？`)) return;
+      try{
+        await deleteModel(model);
+        tr.remove();
+      }catch(e){
+        alert('刪除失敗：' + (e?.message || e));
+      }
+    });
+  }
+
+  $$('#modelsBody tr').forEach(bindRowActions);
+
+  // 規格參數提交（含驗證狀態/驗證者）
+  specForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const model = specForm.dataset.model;
+    const apps = (specForm.elements['applications'].value || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    const payload = {
+      input_voltage_range:  specForm.elements['input_voltage_range'].value || null,
+      output_voltage:       specForm.elements['output_voltage'].value || null,
+      output_power:         specForm.elements['output_power'].value || null,
+      package:              specForm.elements['package'].value || null,
+      isolation:            specForm.elements['isolation'].value || null,
+      insulation:           specForm.elements['insulation'].value || null,
+      dimension:            specForm.elements['dimension'].value || null,
+      applications:         apps,
+      notes:                specForm.elements['notes'].value || null,
+      verify_status:        (document.getElementById('chkVerified').checked ? 'verified' : 'unverified'),
+      reviewer:             document.getElementById('reviewerInp').value || null,
+    };
+
+    try{
+      await patchModel(model, payload);
+      closeSpecModal();
+      alert('已儲存');
+      // 你若想即時更新表格上的 badge，可在此做 DOM 更新
+    }catch(e){
+      alert('儲存失敗：' + (e?.message || e));
+    }
+  });
 </script>
 {% endblock %}

@@ -1,0 +1,324 @@
+{% extends 'base.html' %}
+
+{% block head_extra %}
+<style>
+  /* ====== 既有：Modal 與表單樣式 ====== */
+  .modal.hidden{display:none}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:1000}
+  .modal .modal-body{background:#fff;width:640px;max-width:92vw;border-radius:8px;padding:16px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+  .modal .modal-actions{display:flex;gap:8px;margin-top:12px}
+  .muted{color:#6b7280;margin-top:8px}
+  .btn-row{display:flex;gap:10px}
+  .file-list{margin:8px 0;padding:6px 10px;border:1px solid #e5e7eb;border-radius:4px;background:#f9fafb;max-height:180px;overflow-y:auto;font-size:14px}
+  .file-list:empty{display:none;padding:0;border:0;background:transparent}
+  .file-list li{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #eee}
+  .file-list li:last-child{border-bottom:none}
+  .file-list .meta{color:#6b7280;font-size:12px}
+  .btn-link{background:transparent;border:0;padding:0;color:#2563eb;cursor:pointer}
+
+  /* ====== 新增：檔案表格與按鈕樣式 ====== */
+  .files-actions{display:flex;align-items:center;gap:12px;margin:8px 0 6px;flex-wrap:wrap}
+  .files-table{width:100%;border-collapse:collapse;table-layout:fixed; margin-top:16px; }
+  .files-table th,.files-table td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left}
+  .files-table th{background:#f9fafb;font-weight:600}
+  /* 欄寬（搭配下方 colgroup） */
+  .col-select{width:44px}
+  .col-hash{width:96px}
+  .col-size{width:110px}
+  .col-parsed{width:90px}
+  .col-ops{width:220px}
+  /* 內容處理 */
+  .cell-hash code{white-space:nowrap}
+  .cell-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cell-size{white-space:nowrap;text-align:right}
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;line-height:18px}
+  .badge-ok{background:#DCFCE7;color:#065F46}
+  .badge-muted{background:#F3F4F6;color:#374151}
+  /* 操作按鈕不換行 */
+  .row-tools{display:flex;gap:8px;flex-wrap:nowrap;align-items:center;justify-content:flex-start}
+  .row-tools > *{white-space:nowrap}
+
+  /* 按鈕設計 */
+  .btn{display:inline-block;padding:6px 10px;border-radius:8px;font-size:14px;line-height:20px;text-decoration:none;cursor:pointer}
+  .btn:focus{outline:2px solid rgba(59,130,246,.5);outline-offset:2px}
+  .btn-primary{background:#111827;color:#fff;border:1px solid #111827}
+  .btn-primary:hover{filter:brightness(.95)}
+  .btn-outline{background:#fff;color:#2563eb;border:1px solid #e5e7eb}
+  .btn-outline:visited, .btn-outline:hover{color:#2563eb}
+  .btn-outline:hover{background:#f3f4f6}
+  .btn-sm{padding:4px 8px;font-size:13px;border-radius:7px}
+</style>
+{% endblock %}
+
+{% block content %}
+<section>
+  <h2>上傳/登錄</h2>
+  <div class="btn-row">
+    <button id="openUploadModal">上傳 PDF（可多檔）</button>
+    <button id="openUrlModal">貼上下載連結（批量）</button>
+  </div>
+
+  <!-- 上傳 PDF Modal -->
+  <div id="uploadModal" class="modal hidden">
+    <div class="modal-body">
+      <h3>上傳 PDF（可多檔）</h3>
+      <form id="uploadMultiForm" enctype="multipart/form-data" method="post" action="/api/files/upload-multi">
+        <input type="file" id="uploadFiles" name="files" accept="application/pdf" multiple />
+        <ul id="fileList" class="file-list"></ul>
+        <p class="muted">
+          可一次選取多個 PDF。
+          <button type="button" id="clearAllBtn" class="btn-link">清空清單</button>
+        </p>
+        <div class="modal-actions">
+          <button type="submit">送出上傳</button>
+          <button type="button" class="close">關閉</button>
+        </div>
+      </form>
+      <div id="uploadMultiMsg" class="muted"></div>
+    </div>
+  </div>
+
+  <!-- 貼上下載連結 Modal -->
+  <div id="urlModal" class="modal hidden">
+    <div class="modal-body">
+      <h3>貼上下載連結（每行一個）</h3>
+      <form id="urlBatchForm" method="post" action="/api/files/upload-urls" autocomplete="off">
+        <textarea name="urls" placeholder="https://example.com/a.pdf&#10;https://example.com/b.pdf" style="width:520px;height:160px;"></textarea>
+        <div style="margin:8px 0;">
+          <input type="text" name="hsd_name" list="hsdOptions" placeholder="站點(例如 Mouser/DigiKey/...)" style="width: 320px;" />
+          <datalist id="hsdOptions">
+            <option value="Mouser"></option>
+            <option value="DigiKey"></option>
+            <option value="Arrow"></option>
+            <option value="Future"></option>
+            <option value="RS"></option>
+          </datalist>
+        </div>
+        <p class="muted">部分 HSD 站點需要模擬 session/headers 否則爬蟲下載檔案會失敗。</p>
+        <div class="modal-actions">
+          <button type="submit">建立下載任務</button>
+          <button type="button" class="close">關閉</button>
+        </div>
+      </form>
+      <div id="urlBatchMsg" class="muted"></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>檔案清單</h2>
+
+  <div class="files-actions">
+    <button id="btnExtractSelected" class="btn btn-primary btn-sm">加入解析佇列（已選）</button>
+    <label class="muted" title="若已解析過，仍強制重新入列解析">
+      <input type="checkbox" id="chkForceRerun" />
+      強制重新解析
+    </label>
+  </div>
+
+  <table class="files-table my-10">
+    <colgroup>
+      <col class="col-select">
+      <col class="col-hash">
+      <col>                 <!-- 檔名吃剩餘寬度 -->
+      <col class="col-size">
+      <col class="col-parsed">
+      <col class="col-ops">
+    </colgroup>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="chkAll" /></th>
+        <th>hash</th>
+        <th>檔名</th>
+        <th>大小</th>
+        <th>已解析？</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in files %}
+      <tr data-file-hash="{{ f.file_hash }}">
+        <td><input type="checkbox" class="chkRow" value="{{ f.file_hash }}" /></td>
+        <td class="cell-hash"><code>{{ f.file_hash[:8] }}</code></td>
+        <td class="cell-name" title="{{ f.filename }}">{{ f.filename }}</td>
+        <td class="cell-size">{{ (f.size_bytes)|human_size }}</td>
+        <td>
+          {% if parsed_map.get(f.file_hash) %}
+            <span class="badge badge-ok">是</span>
+          {% else %}
+            <span class="badge badge-muted">否</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="row-tools">
+            <a class="btn btn-outline btn-sm" href="/pdf/{{ f.file_hash }}" target="_blank" rel="noopener">開啟 PDF</a>
+            <a class="btn btn-outline btn-sm" href="/files/{{ f.file_hash }}">查看詳情</a>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  /* ====== Modal 與上傳/URL 既有互動（保留） ====== */
+  const uploadModal = document.getElementById('uploadModal');
+  const urlModal = document.getElementById('urlModal');
+
+  document.getElementById('openUploadModal').onclick = () => uploadModal.classList.remove('hidden');
+  document.getElementById('openUrlModal').onclick = () => urlModal.classList.remove('hidden');
+
+  Array.from(document.querySelectorAll('.modal .close')).forEach(btn => {
+    btn.onclick = (e) => {
+      const modal = e.target.closest('.modal');
+      modal.classList.add('hidden');
+      if (modal.id === 'uploadModal') {
+        fileMap.clear();
+        renderFileList();
+      }
+      if (modal.id === 'urlModal') {
+        modal.querySelector('textarea[name="urls"]').value = '';
+        modal.querySelector('input[name="hsd_name"]').value = '';
+        document.getElementById('urlBatchMsg').textContent = '';
+      }
+    };
+  });
+  [uploadModal, urlModal].forEach(m => {
+    m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { uploadModal.classList.add('hidden'); urlModal.classList.add('hidden'); }
+  });
+
+  // 上傳多檔（疊加/可移除/可清空）
+  const uploadMultiForm = document.getElementById('uploadMultiForm');
+  const uploadInput = document.getElementById('uploadFiles');
+  const fileListEl = document.getElementById('fileList');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+
+  const fileMap = new Map();
+  const fileKey = f => `${f.name}::${f.size}::${f.lastModified}`;
+
+  function renderFileList() {
+    fileListEl.innerHTML = '';
+    for (const [k, f] of fileMap) {
+      const li = document.createElement('li');
+      li.innerHTML = `
+        <span>${f.name} <span class="meta">(${(f.size / 1024).toFixed(1)} KB)</span></span>
+        <button type="button" class="btn-link remove" data-k="${k}">移除</button>
+      `;
+      fileListEl.appendChild(li);
+    }
+    fileListEl.querySelectorAll('button.remove').forEach(btn => {
+      btn.onclick = () => { fileMap.delete(btn.dataset.k); renderFileList(); };
+    });
+  }
+
+  uploadInput.addEventListener('change', () => {
+    Array.from(uploadInput.files || []).forEach(f => {
+      const k = fileKey(f);
+      if (!fileMap.has(k)) fileMap.set(k, f);
+    });
+    uploadInput.value = '';  // 允許重選同批檔案
+    renderFileList();
+  });
+
+  clearAllBtn.onclick = () => { fileMap.clear(); renderFileList(); };
+
+  uploadMultiForm.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!fileMap.size) { alert('尚未選擇檔案'); return; }
+    const fd = new FormData();
+    for (const f of fileMap.values()) fd.append('files', f, f.name);
+    const res = await fetch(uploadMultiForm.action, { method: 'POST', body: fd });
+    const json = await res.json();
+    document.getElementById('uploadMultiMsg').textContent = `已上傳 ${json.uploaded} 檔案`;
+    fileMap.clear(); renderFileList();
+  };
+
+  // URL 批量
+  const urlBatchForm = document.getElementById('urlBatchForm');
+  urlBatchForm && (urlBatchForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData();
+    const raw = urlBatchForm.querySelector('textarea[name="urls"]').value || '';
+    const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+    for (const u of lines) fd.append('urls', u);
+    const site = urlBatchForm.querySelector('input[name="hsd_name"]').value || '';
+    if (site) fd.append('hsd_name', site);
+    const res = await fetch(urlBatchForm.action, { method: 'POST', body: fd });
+    const json = await res.json();
+    document.getElementById('urlBatchMsg').textContent = `已建立 ${json.queued} 個下載任務（前往「下載任務」頁面查看進度）`;
+  });
+
+  /* ====== 批量加入解析（逐一呼叫 /api/tasks/queue） ====== */
+  const $ = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+  async function enqueueOne(hash, forceRerun) {
+    const resp = await fetch("/api/tasks/queue", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_hashes: [hash], force_rerun: !!forceRerun }),
+    });
+    if (!resp.ok) {
+      let msg = `HTTP ${resp.status}`;
+      try { const j = await resp.json(); if (j.detail) msg = j.detail; } catch {}
+      throw new Error(msg);
+    }
+    return resp.json();
+  }
+
+  // 全選
+  const chkAll = $("#chkAll");
+  chkAll?.addEventListener("change", (e) => {
+    const on = e.target.checked;
+    $$(".chkRow").forEach(ch => ch.checked = on);
+  });
+  $$(".chkRow").forEach(ch => {
+    ch.addEventListener("change", () => {
+      const rows = $$(".chkRow");
+      chkAll.checked = rows.length > 0 && rows.every(x => x.checked);
+    });
+  });
+
+  // 逐一呼叫（序列化）
+  $("#btnExtractSelected")?.addEventListener("click", async () => {
+    const selected = $$(".chkRow").filter(ch => ch.checked).map(ch => ch.value);
+    if (selected.length === 0) { alert("請先選擇至少一個檔案"); return; }
+    const forceRerun = $("#chkForceRerun")?.checked || false;
+
+    const btn = $("#btnExtractSelected");
+    const originalText = btn.textContent;
+    btn.disabled = true;
+
+    let ok = 0, fail = 0, errors = [];
+    for (let i = 0; i < selected.length; i++) {
+      const h = selected[i];
+      btn.textContent = `加入解析中 ${i+1}/${selected.length}…`;
+      try {
+        await enqueueOne(h, forceRerun);
+        ok++;
+      } catch (e) {
+        fail++;
+        errors.push(`${h}: ${e?.message || e}`);
+        // 若要遇錯即停：break;
+      }
+      // 需要節流時可打開：await new Promise(r => setTimeout(r, 30));
+    }
+
+    btn.disabled = false;
+    btn.textContent = originalText;
+
+    if (fail === 0) {
+      alert(`成功加入解析：${ok} 筆`);
+    } else {
+      alert(`成功：${ok}，失敗：${fail}\n——\n${errors.slice(0,5).join("\n")}${errors.length>5?"\n...(more)":""}`);
+    }
+    location.reload();
+  });
+</script>
+{% endblock %}

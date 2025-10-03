@@ -1,5 +1,6 @@
+# backend/app/schemas.py
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Any, Dict
 
 # ── FileAsset
@@ -13,12 +14,17 @@ class FileAssetOut(BaseModel):
     class Config:
         from_attributes = True
 
-class UploadResult(BaseModel):
+# ── Upload multi
+class UploadMultiItemOut(BaseModel):
     file_hash: str
-    file_exists: bool
-    has_parsed_models: bool
+    filename: str
+    
+class UploadMultiOut(BaseModel):
+    uploaded: int
+    items: List[UploadMultiItemOut]
 
-# ── Queue request (維持相容)
+
+# ── Queue request
 class QueueRequest(BaseModel):
     file_hashes: List[str]
     force_rerun: bool = False
@@ -37,7 +43,7 @@ class DownloadTaskOut(BaseModel):
     class Config:
         from_attributes = True
 
-# ── ExtractionTask（新）
+# ── ExtractionTask
 class ExtractionTaskOut(BaseModel):
     id: int
     mode: str                       # sync/batch/background
@@ -74,18 +80,39 @@ class ExtractionTaskOut(BaseModel):
 # ── ModelItem
 class ModelItemOut(BaseModel):
     id: int
-    file_hash: str
     model_number: str
-    fields_json: Any
-    verify_status: str
+
+    # 規格
+    input_voltage_range: Optional[str] = None
+    output_voltage: Optional[str] = None
+    output_power: Optional[str] = None
+    package: Optional[str] = None
+    isolation: Optional[str] = None
+    insulation: Optional[str] = None
+    applications: List[str] = Field(default_factory=list)
+    dimension: Optional[str] = None
+
+    verify_status: str              # 'unverified' / 'verified'
     reviewer: Optional[str]
     reviewed_at: Optional[datetime]
     notes: Optional[str]
+
     class Config:
         from_attributes = True
 
-class ModelVerifyUpdate(BaseModel):
-    fields_json: Optional[Any] = None
-    verify_status: Optional[str] = None
+class ModelUpsertIn(BaseModel):
+    input_voltage_range: Optional[str] = None
+    output_voltage: Optional[str] = None
+    output_power: Optional[str] = None
+    package: Optional[str] = None
+    isolation: Optional[str] = None
+    insulation: Optional[str] = None
+    applications: Optional[List[str]] = None
+    dimension: Optional[str] = None
+    
+    verify_status: Optional[str] = None      # 'unverified' / 'verified'
     reviewer: Optional[str] = None
     notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True

@@ -1,23 +1,85 @@
+# backend/app/routers/tasks.py
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from datetime import datetime, timezone
 
 from ..db import get_db
-from ..models import ExtractionTask, DownloadTask
+from ..models import ExtractionTask, DownloadTask, FileAsset
 from ..services.extractor_worker import extractor_worker
 from ..schemas import QueueRequest
+from ..settings import settings
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
-# ── 入列（保持向下相容：單檔擷取）
+EXTRACT_DIR = settings.WORKSPACE_DIR / "extractions"
+
+def _has_extraction_json(file_hash: str) -> bool:
+    p = EXTRACT_DIR / f"{file_hash}.json"
+    try:
+        return p.exists() and p.is_file()
+    except Exception:
+        return False
+
+# ── 入列（向下相容：單/多檔擷取；跳過已存在 JSON 且非 force_rerun）
 @router.post("/queue")
-async def queue_extract(req: QueueRequest):
+async def queue_extract(req: QueueRequest, db: Session = Depends(get_db)):
     if not req.file_hashes:
         raise HTTPException(status_code=400, detail="file_hashes cannot be empty")
+
+    # 去重，並記錄重複
+    seen = set()
+    deduped: List[str] = []
+    duplicates_ignored: List[str] = []
     for h in req.file_hashes:
+        h = (h or "").strip()
+        if not h:
+            continue
+        if h in seen:
+            duplicates_ignored.append(h)
+            continue
+        seen.add(h)
+        deduped.append(h)
+
+    if not deduped:
+        return {
+            "queued": 0,
+            "skipped_existing": 0,
+            "not_found": 0,
+            "duplicates_ignored": len(duplicates_ignored),
+            "total_input": len(req.file_hashes),
+            "queued_hashes": [],
+            "skipped_hashes": [],
+            "not_found_hashes": [],
+        }
+
+    queued_hashes: List[str] = []
+    skipped_hashes: List[str] = []
+    not_found_hashes: List[str] = []
+
+    for h in deduped:
+        fa = db.get(FileAsset, h)
+        if not fa:
+            not_found_hashes.append(h)
+            continue
+
+        if (not req.force_rerun) and _has_extraction_json(h):
+            # 已有結果且不強制重跑 → 跳過
+            skipped_hashes.append(h)
+            continue
+
         await extractor_worker.enqueue(h, req.force_rerun)
-    return {"queued": len(req.file_hashes)}
+        queued_hashes.append(h)
+
+    return {
+        "queued": len(queued_hashes),
+        "skipped_existing": len(skipped_hashes),
+        "not_found": len(not_found_hashes),
+        "duplicates_ignored": len(duplicates_ignored),
+        "total_input": len(req.file_hashes),
+        "queued_hashes": queued_hashes,
+        "skipped_hashes": skipped_hashes,
+        "not_found_hashes": not_found_hashes,
+    }
 
 # ── ExtractionTask 列表
 @router.get("/extraction")
@@ -60,7 +122,7 @@ def list_extraction_tasks(
         for r in rows
     ]
 
-# ── DownloadTask 列表（沿用）
+# ── DownloadTask 列表
 @router.get("/download")
 def list_download_tasks(
     db: Session = Depends(get_db),

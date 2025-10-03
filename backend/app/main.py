@@ -1,13 +1,16 @@
+# backend/app/main.py
+
 import json
-import asyncio
 from pathlib import Path
+from urllib.parse import quote
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from .settings import settings
 from .db import Base, engine, get_db
@@ -16,7 +19,7 @@ from .routers import files as files_router
 from .routers import tasks as tasks_router
 from .routers import downloads as downloads_router
 from .routers import extractions as extractions_router
-from .routers import models_edit as models_router
+from .routers import models as models_router
 from .routers import export as export_router
 from .routers import static_proxy as static_proxy_router
 from .services.extractor_worker import extractor_worker
@@ -25,8 +28,27 @@ from .crawlers.scrape_session import aiohttp_hsd_session_manager
 
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = (BASE_DIR.parent).resolve()
+EXTRACT_DIR = settings.WORKSPACE_DIR / "extractions"
 
 # ── DevTools helper
+def human_size(n: int | None) -> str:
+    """以十進位(1000)換算：B, KB, MB, GB, TB, PB"""
+    try:
+        v = int(n)
+    except (TypeError, ValueError):
+        return "-"
+    if v < 0:
+        return "-"
+    units = ["B", "KB", "MB", "GB", "TB", "PB"]
+    val = float(v)
+    i = 0
+    while val >= 1000.0 and i < len(units) - 1:
+        val /= 1000.0
+        i += 1
+    # 小數一位，去掉無意義的 .0
+    num = f"{val:.1f}".rstrip("0").rstrip(".")
+    return f"{num} {units[i]}"
+
 def _setup_devtools_static() -> Path:               # 回傳 Path
     wk_dir = BASE_DIR / ".well-known" / "appspecific"
     wk_dir.mkdir(parents=True, exist_ok=True)       # ← 加 parents=True
@@ -101,38 +123,63 @@ templates_env = Environment(
     # 開發時可考慮 auto_reload=True
 )
 
+# 檔案大小顯示轉換器
+templates_env.filters["human_size"] = human_size
+
 def render_template(name: str, context: dict) -> HTMLResponse:
     tpl = templates_env.get_template(name)
     return HTMLResponse(tpl.render(**context))
 
 # pages
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request, db: Session = Depends(get_db)):
-    files = db.query(FileAsset).order_by(FileAsset.created_at.desc()).all()
-    return render_template("index.html", {"request": request, "files": files})
+@app.get("/", include_in_schema=False)
+async def index(request: Request):
+    return RedirectResponse(url=request.url_for("files_page"), status_code=307)
 
 @app.get("/tasks", response_class=HTMLResponse)
 async def tasks_page(request: Request):
     return render_template("tasks.html", {"request": request})
+
+@app.get("/files", response_class=HTMLResponse)
+async def files_page(request: Request, db: Session = Depends(get_db)):
+    files = db.query(FileAsset).order_by(FileAsset.created_at.desc()).all()
+
+    # 一次收集已有的 extraction JSON（stem 就是 file_hash）
+    existing_json_hashes = {p.stem for p in EXTRACT_DIR.glob("*.json")}
+    parsed_map = {f.file_hash: (f.file_hash in existing_json_hashes) for f in files}
+
+    return render_template(
+        "files.html",
+        {"request": request, "files": files, "parsed_map": parsed_map},
+    )
 
 @app.get("/files/{file_hash}", response_class=HTMLResponse)
 async def file_detail(file_hash: str, request: Request, db: Session = Depends(get_db)):
     fa = db.get(FileAsset, file_hash)
     if not fa:
         raise HTTPException(status_code=404, detail="file not found")
-    models = (db.query(ModelItem)
-                .filter(ModelItem.file_hash == file_hash)
-                .order_by(ModelItem.model_number.asc())
-                .all())
+    models = sorted(fa.models, key=lambda m: (m.model_number or ""))
     return render_template("file_detail.html", {"request": request, "fa": fa, "models": models})
 
-@app.get("/review/{model_id}", response_class=HTMLResponse)
-async def review_model(model_id: int, request: Request, db: Session = Depends(get_db)):
-    m = db.get(ModelItem, model_id)
-    if not m:
-        raise HTTPException(status_code=404, detail="model not found")
-    fa = db.get(FileAsset, m.file_hash)
-    return render_template("review.html", {"request": request, "m": m, "fa": fa})
+@app.get("/review/{file_hash}", response_class=HTMLResponse)
+async def review_file(request: Request, file_hash: str, db: Session = Depends(get_db)):
+    fa = db.get(FileAsset, file_hash)
+    if not fa:
+        raise HTTPException(status_code=404, detail="file not found")
+
+    model_numbers = sorted([m.model_number for m in fa.models])
+
+    json_path = (EXTRACT_DIR / f"{file_hash}.json").as_posix()
+    json_url = f"/api/static/?path={quote(json_path, safe='')}"
+
+    return render_template(
+        "review.html",
+        {
+            "request": request,
+            "fa": fa,
+            "model_numbers": model_numbers,
+            "json_url": json_url,
+        },
+    )
 
 @app.get("/pdf/{file_hash}")
 async def serve_pdf(file_hash: str, db: Session = Depends(get_db)):

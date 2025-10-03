@@ -3,126 +3,224 @@
 {% block head_extra %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.min.js"
   integrity="sha512-Z8CqofpIcnJN80feS2uccz+pXWgZzeKxDsDNMD/dJ6997/LSRY+W4NmEt9acwR+Gt9OHN0kkI1CTianCwoqcjQ=="
-  crossorigin="anonymous" referrerpolicy="no-referrer">
-  </script>
+  crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+  /* ---- 版面 ---- */
+  #viewer{display:flex;gap:16px}
+  #pdfPane{width:50%;border:1px solid #e5e7eb;height:85vh;overflow:auto;border-radius:10px;background:#fff}
+  #formPane{width:50%;display:flex;flex-direction:column;gap:10px}
+
+  /* 標題列 */
+  .page-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .btn-link{padding:6px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#374151;font-size:13px}
+  .btn-link:hover{background:#f3f4f6}
+
+  /* 工具列 */
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-size:14px;line-height:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
+  .btn:hover{background:#f3f4f6}
+  .btn-primary{background:#111827;color:#fff;border-color:#111827}
+  .btn-primary:hover{filter:brightness(.95)}
+  .btn-toggle.on{background:#111827;color:#fff;border-color:#111827}
+  .state-pill{padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #e5e7eb;background:#fff;color:#111827}
+  .input{border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;font-size:14px}
+
+  /* 右側：格線 */
+  .pane-split{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}
+
+  /* 表格 */
+  .grid-wrap{border:1px solid #e5e7eb;border-radius:10px;overflow:visible;background:#fff}
+  table.grid{width:100%;border-collapse:collapse;table-layout:auto}
+  .grid th,.grid td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left;position:relative}
+  .grid th{background:#f9fafb;font-weight:600;position:sticky;top:0;z-index:1}
+  .col-model{width:160px}
+
+  /* cell 與編輯視覺 */
+  .cell{position:relative;border-radius:6px;min-height:32px;padding:6px 8px}
+  .cell.view .val{white-space:pre-wrap}   /* ← 顯示/編輯都保留換行 */
+  .cell.editing{outline:2px solid #2563eb;background:#fff}
+  .cell .val{display:block;min-height:18px;white-space:pre-wrap}
+  .cell.view .val:empty::after{content:'—';color:#9ca3af}
+  .cell.editing .val[contenteditable="true"]:focus{outline:none;box-shadow:none}
+
+  /* 驗證底色（UI 視覺狀態）*/
+  tr.verified-row td{background:#F0FDF4}
+  tr.unverified-row td{background:#fff}
+
+  /* Tooltip（掛在 td） */
+  td:hover .tip{display:block}
+  .tip{
+    position:absolute;left:0;top:calc(100% + 6px);
+    min-width:260px;max-width:560px;
+    background:#111827;color:#e5e7eb;padding:10px 12px;border-radius:8px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);
+    font-size:12px;line-height:1.5;display:none;z-index:9999
+  }
+  .tip-title{color:#93c5fd;margin-bottom:6px;font-weight:600}
+  .tip ul{margin:0;padding-left:18px}
+</style>
 {% endblock %}
 
 {% block content %}
-<style>
-  #viewer {
-    display: flex;
-    gap: 16px;
-  }
+<div class="page-title">
+  <h2 style="margin:0">
+    校對：{{ fa.filename }}
+    <small style="color:#6b7280">(<code>{{ fa.file_hash }}</code>)</small>
+  </h2>
+  <a class="btn-link" href="/files/{{ fa.file_hash }}">↩ 返回該檔案</a>
+</div>
 
-  #pdfPane {
-    width: 50%;
-    border: 1px solid #ddd;
-    height: 85vh;
-    overflow: auto;
-  }
-
-  #formPane {
-    width: 50%;
-  }
-
-  pre.json {
-    background: #111;
-    color: #ddd;
-    padding: 8px;
-    border-radius: 6px;
-    max-height: 60vh;
-    overflow: auto;
-  }
-</style>
-
-<h2>校對：{{ m.model_number }}</h2>
 <div id="viewer">
+  <!-- 左：PDF -->
   <div id="pdfPane">
     <canvas id="pdfCanvas"></canvas>
-    <div style="margin-top:8px;">
-      <button onclick="prevPage()">上一頁</button>
+    <div class="toolbar" style="padding:8px 10px;">
+      <button class="btn" onclick="prevPage()">上一頁</button>
       <span>Page <span id="pageNum">1</span> / <span id="pageCount">?</span></span>
-      <button onclick="nextPage()">下一頁</button>
-      <input type="text" id="searchBox" placeholder="全文搜尋..." />
-      <button onclick="doSearch()">搜尋</button>
-      <div id="searchRes"></div>
+      <button class="btn" onclick="nextPage()">下一頁</button>
+      <input type="text" id="searchBox" class="input" placeholder="全文搜尋…"/>
+      <button class="btn" onclick="doSearch()">搜尋</button>
+      <div id="searchRes" style="font-size:12px;color:#6b7280"></div>
     </div>
   </div>
+
+  <!-- 右：表格 -->
   <div id="formPane">
-    <h3>欄位 JSON（遵照原有 schema）</h3>
-    <pre id="jsonView" class="json"></pre>
+    <div class="toolbar">
+      <button id="toggleEditBtn" class="btn btn-toggle"><span id="editLabel">編輯模式：關</span></button>
+      <span class="state-pill" id="editState">目前為檢視模式</span>
 
-    <textarea id="jsonEdit" style="width:100%; height:240px; display:none;"></textarea>
-    <p>
-      <button id="editBtn" onclick="toggleEdit(true)">✎ 編輯</button>
-      <button id="saveBtn" onclick="saveEdit()" style="display:none;">💾 儲存</button>
-      <button id="cancelBtn" onclick="toggleEdit(false)" style="display:none;">取消</button>
-    </p>
+      <div class="toolbar-right">
+        <label style="font-size:13px;color:#374151">當前驗證者</label>
+        <input id="globalReviewer" class="input" placeholder="例如：Allen / QA-03" style="min-width:220px">
+        <button id="saveAllBtn" class="btn btn-primary">儲存全部變更</button>
+      </div>
+    </div>
 
-    <p>
-      審核狀態：
-      <select id="statusSel">
-        <option value="pending" {% if m.verify_status=='pending' %}selected{% endif %}>pending</option>
-        <option value="accepted" {% if m.verify_status=='accepted' %}selected{% endif %}>accepted</option>
-        <option value="corrected" {% if m.verify_status=='corrected' %}selected{% endif %}>corrected</option>
-        <option value="rejected" {% if m.verify_status=='rejected' %}selected{% endif %}>rejected</option>
-      </select>
-    </p>
-    <p>
-      審核者：<input id="reviewer" value="" placeholder="姓名或代號" style="width:60%" />
-    </p>
-    <p>
-      備註：<input id="notes" value="" placeholder="備註" style="width:100%" />
-    </p>
-    <p>
-      <button onclick="saveStatus()">更新狀態</button>
-      <a href="/files/{{ fa.file_hash }}">↩ 返回檔案</a>
-    </p>
+    <div class="pane-split">
+      <div class="grid-wrap">
+        <table class="grid" id="grid">
+          <thead>
+            <tr>
+              <th class="col-model">型號</th>
+              <th>Input Voltage Range</th>
+              <th>Output Voltage</th>
+              <th>Output Power</th>
+              <th>Package</th>
+              <th>I/O Isolation</th>
+              <th>Insulation System</th>
+              <th>Applications</th>
+              <th>Dimension</th>
+            </tr>
+          </thead>
+          <tbody id="gridBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="color:#6b7280;font-size:12px">
+      提示：滑鼠移到格子可看 AI 擷取依據（log）。雙擊格子可編輯；Enter 提交、Esc 取消；<b>Applications 欄位 Shift+Enter 換行</b>。
+    </div>
   </div>
 </div>
 
 <script>
   const fileHash = "{{ fa.file_hash }}";
-  const modelId = "{{ m.id }}";
-  let pdfDoc = null, pageNum = 1;
+  const JSON_URL = "{{ json_url }}";
+  const MODEL_NUMBERS = {{ (model_numbers or []) | tojson | safe }};
 
-  async function loadModel() {
-    const res = await fetch(`/api/models/${modelId}`);
-    const m = await res.json();
-    const pretty = JSON.stringify(m.fields_json, null, 2);
-    document.getElementById('jsonView').textContent = pretty;
-    document.getElementById('jsonEdit').value = pretty;
+  let pdfDoc=null, pageNum=1;
+
+  /* 欄位定義（與 DB 對應） */
+  const FIELD_KEYS = [
+    "input_voltage_range","output_voltage","output_power",
+    "package","isolation","insulation","applications","dimension"
+  ];
+  const FIELD_LABEL = {
+    input_voltage_range:"Input Voltage Range",
+    output_voltage:"Output Voltage",
+    output_power:"Output Power",
+    package:"Package",
+    isolation:"I/O Isolation",
+    insulation:"Insulation System",
+    applications:"Applications",
+    dimension:"Dimension",
+  };
+
+  /* 狀態 */
+  let editing = false;
+  let rows = [];           // { model_number, verify_status, reviewer, reviewed_at, ...fields, _ui_verify? }
+  let ORIGINAL_ROWS = [];  // 載入時的凍結快照
+  let logsByCell = {};     // logsByCell[model][field] = string[]
+  let dirty = {};          // dirty[model] = { field: newValue, ... }
+
+  /* 小工具 */
+  function deepClone(o){ return JSON.parse(JSON.stringify(o || {})); }
+  function norm(v){ return (v ?? '').toString().trim(); }
+  function ensureDirty(model){ if (!dirty[model]) dirty[model] = {}; return dirty[model]; }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  /* Applications 轉換與等價判斷（忽略順序與大小寫） */
+  function splitApps(text){
+    return (text || "")
+      .split(/\r?\n|[,;]/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+  function joinApps(list){
+    return (Array.isArray(list) ? list : []).join('\n'); // 顯示：每行一個
+  }
+  function canonApps(list){
+    return Array.from(new Set(
+      (list || []).map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase())
+    )).sort();
+  }
+  function equalApps(a, b){
+    const A = canonApps(a), B = canonApps(b);
+    if (A.length !== B.length) return false;
+    for (let i=0;i<A.length;i++) if (A[i] !== B[i]) return false;
+    return true;
   }
 
-  function toggleEdit(on) {
-    document.getElementById('jsonView').style.display = on ? 'none' : 'block';
-    document.getElementById('jsonEdit').style.display = on ? 'block' : 'none';
-    document.getElementById('editBtn').style.display = on ? 'none' : 'inline-block';
-    document.getElementById('saveBtn').style.display = on ? 'inline-block' : 'none';
-    document.getElementById('cancelBtn').style.display = on ? 'inline-block' : 'none';
+  /* 依快照判斷該 model 是否有變更（Applications 用集合等價） */
+  function isRowChanged(model){
+    const now = rows.find(r => r.model_number === model);
+    const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
+    if (!now || !orig) return false;
+    for (const f of FIELD_KEYS){
+      if (f === 'applications'){
+        const nowArr  = splitApps(now[f]);
+        const origArr = splitApps(orig[f]);
+        if (!equalApps(nowArr, origArr)) return true;
+      }else{
+        if (norm(now[f]) !== norm(orig[f])) return true;
+      }
+    }
+    return false;
   }
 
-  async function saveEdit() {
-    try {
-      const obj = JSON.parse(document.getElementById('jsonEdit').value);
-      await fetch(`/api/models/${modelId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields_json: obj, verify_status: 'corrected' }) });
-      toggleEdit(false);
-      loadModel();
-      alert('已保存');
-    } catch (e) { alert('JSON 格式錯誤'); }
+  /* 更新列的 UI 驗證底色（僅視覺） */
+  function applyVerifyVisual(model){
+    const row = rows.find(r => r.model_number === model);
+    const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
+    if (!row || !orig) return;
+    const changed = isRowChanged(model);
+    row._ui_verify = (orig.verify_status === 'verified' && changed) ? 'unverified' : orig.verify_status;
+
+    const trs = Array.from(document.querySelectorAll('#gridBody tr'));
+    for (const tr of trs){
+      const name = tr.querySelector('.col-model .mono')?.textContent?.trim();
+      if (name === model){
+        tr.className = (row._ui_verify === 'verified') ? 'verified-row' : 'unverified-row';
+        break;
+      }
+    }
   }
 
-  async function saveStatus() {
-    const status = document.getElementById('statusSel').value;
-    const reviewer = document.getElementById('reviewer').value;
-    const notes = document.getElementById('notes').value;
-    await fetch(`/api/models/${modelId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verify_status: status, reviewer, notes }) });
-    alert('已更新');
-  }
-
-  // PDF.js
+  /* PDF.js */
   document.addEventListener('DOMContentLoaded', async () => {
-    await loadModel();
+    await bootstrapRightPane();
     const url = `/pdf/${fileHash}`;
     const loadingTask = window['pdfjsLib'].getDocument(url);
     pdfDoc = await loadingTask.promise;
@@ -130,37 +228,323 @@
     renderPage(1);
   });
 
-  async function renderPage(num) {
+  async function renderPage(num){
     pageNum = num;
     const page = await pdfDoc.getPage(num);
-
     const pdfPane = document.getElementById('pdfPane');
     const canvas = document.getElementById('pdfCanvas');
     const ctx = canvas.getContext('2d');
 
-    // 原始 viewport（scale = 1）
     const unscaledViewport = page.getViewport({ scale: 1 });
-
-    // 計算要縮放的倍數（容器寬度 / PDF 預設寬度）
-    const scale = pdfPane.clientWidth / unscaledViewport.width;
-
+    const scale = pdfPane.clientWidth / (unscaledViewport.width + 10);
     const viewport = page.getViewport({ scale });
-    canvas.height = viewport.height;
-    canvas.width = viewport.width;
 
+    canvas.height = viewport.height;
+    canvas.width  = viewport.width;
     await page.render({ canvasContext: ctx, viewport }).promise;
     document.getElementById('pageNum').textContent = num;
   }
-  function prevPage() { if (pageNum > 1) renderPage(pageNum - 1); }
-  function nextPage() { if (pageNum < pdfDoc.numPages) renderPage(pageNum + 1); }
+  function prevPage(){ if (pageNum>1) renderPage(pageNum-1); }
+  function nextPage(){ if (pageNum<pdfDoc.numPages) renderPage(pageNum+1); }
 
-  async function doSearch() {
+  async function doSearch(){
     const q = document.getElementById('searchBox').value;
     if (!q) return;
     const res = await fetch(`/api/files/${fileHash}/search?q=` + encodeURIComponent(q));
     const arr = await res.json();
-    const s = arr.map(x => `第 ${x.page} 頁：…${x.snippet}… <button onclick="renderPage(${x.page})">跳頁</button>`).join('<br/>');
+    const s = arr.map(x => `第 ${x.page} 頁：…${x.snippet}… <button class="btn btn-sm" onclick="renderPage(${x.page})">跳頁</button>`).join(' ');
     document.getElementById('searchRes').innerHTML = s || '無結果';
+  }
+
+  /* 後端資料 + logs */
+  async function fetchModelOne(modelNumber){
+    const resp = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`);
+    if (!resp.ok) throw new Error(await resp.text());
+    return await resp.json();
+  }
+  async function fetchAllModelsFromApi(modelNumbers){
+    const arr = [];
+    for (const mn of modelNumbers){
+      try{ arr.push(await fetchModelOne(mn)); }
+      catch(e){ console.warn('fetch model failed:', mn, e); }
+    }
+    return arr;
+  }
+  async function fetchExtractionJson(){
+    try{
+      const r = await fetch(JSON_URL);
+      if (!r.ok) { console.warn('logs json load fail', r.status); return null; }
+      const j = await r.json();
+      if (!j?.models) console.warn('logs json has no models');
+      return j;
+    }catch(e){
+      console.warn('logs json error', e);
+      return null;
+    }
+  }
+
+  /* 嚴格 schema 對應：來源鍵 → DB 鍵 的 log 路徑 */
+  const LOG_SRC_PATH = {
+    input_voltage_range: ["Input Voltage","log"],
+    output_voltage:      ["Output Voltage","log"],
+    output_power:        ["Output Power","log"],
+    package:             ["Package","log"],
+    isolation:           ["I/O Isolation","log"],
+    insulation:          ["Insulation System","log"],
+    applications:        ["Application","log"],
+    dimension:           ["Dimension","log"],
+  };
+
+  function buildLogsMap(exJson){
+    const out = {};
+    if (!exJson || !Array.isArray(exJson.models)) return out;
+
+    for (const item of exJson.models){
+      const mn = (item["Model Number"] || "").trim();
+      if (!mn) continue;
+      const cellLogs = {};
+      for (const [dbKey, path] of Object.entries(LOG_SRC_PATH)){
+        let node = item;
+        for (const k of path){
+          node = (node && typeof node === 'object') ? node[k] : undefined;
+        }
+        cellLogs[dbKey] = Array.isArray(node) ? node : [];
+      }
+      out[mn] = cellLogs;
+    }
+    return out;
+  }
+
+  function buildRowObj(m){
+    return {
+      model_number: m.model_number,
+      verify_status: m.verify_status || 'unverified',
+      reviewer: m.reviewer || null,
+      reviewed_at: m.reviewed_at || null,
+      input_voltage_range: m.input_voltage_range ?? null,
+      output_voltage: m.output_voltage ?? null,
+      output_power: m.output_power ?? null,
+      package: m.package ?? null,
+      isolation: m.isolation ?? null,
+      insulation: m.insulation ?? null,
+      applications: Array.isArray(m.applications) ? joinApps(m.applications) : (m.applications || null),
+      dimension: m.dimension ?? null,
+    };
+  }
+
+  async function bootstrapRightPane(){
+    const modelsFromDb = await fetchAllModelsFromApi(MODEL_NUMBERS);
+    rows = modelsFromDb.map(buildRowObj);
+    ORIGINAL_ROWS = deepClone(rows);
+
+    const exJson = await fetchExtractionJson();
+    const logsMap = buildLogsMap(exJson);
+    logsByCell = {};
+    for (const r of rows){
+      logsByCell[r.model_number] = {};
+      for (const f of FIELD_KEYS){
+        logsByCell[r.model_number][f] = logsMap?.[r.model_number]?.[f] || [];
+      }
+    }
+
+    renderGrid();
+
+    const toggleBtn = document.getElementById('toggleEditBtn');
+    toggleBtn.onclick = () => {
+      editing = !editing;
+      document.getElementById('editLabel').textContent = editing ? '編輯模式：開' : '編輯模式：關';
+      document.getElementById('editState').textContent = editing ? '目前為編輯模式' : '目前為檢視模式';
+      toggleBtn.classList.toggle('on', editing);
+      renderGrid();
+    };
+
+    document.getElementById('saveAllBtn').onclick = saveAllChanges;
+  }
+
+  /* 表格渲染 */
+  function renderGrid(){
+    const tbody = document.getElementById('gridBody');
+    tbody.innerHTML = '';
+
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      const visualStatus = row._ui_verify || row.verify_status;
+      tr.className = (visualStatus === 'verified') ? 'verified-row' : 'unverified-row';
+
+      const tdModel = document.createElement('td');
+      tdModel.className = 'col-model';
+      tdModel.innerHTML = `<div class="mono">${escapeHtml(row.model_number)}</div>`;
+      tr.appendChild(tdModel);
+
+      FIELD_KEYS.forEach(field => {
+        const td = document.createElement('td');
+        const val = row[field] || '';
+        const logs = logsByCell[row.model_number]?.[field] || [];
+        makeCell(td, row.model_number, field, val, logs);
+        tr.appendChild(td);
+      });
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* 事件綁在 td；雙擊啟動編輯；tooltip 掛在 td */
+  function makeCell(td, model, field, value, logs){
+    const div = document.createElement('div');
+    div.className = 'cell ' + (editing ? 'edit' : 'view');
+
+    const inner = document.createElement('div');
+    inner.className = 'val';
+    inner.textContent = value || '';
+    div.appendChild(inner);
+    td.appendChild(div);
+
+    // 檢視模式：tooltip 掛在 td
+    if (!editing && logs && logs.length){
+      const tip = document.createElement('div');
+      tip.className = 'tip';
+      tip.innerHTML =
+        `<div class="tip-title">AI 擷取依據（${FIELD_LABEL[field] || field}）</div>` +
+        `<ul>${logs.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`;
+      td.appendChild(tip);
+    }
+
+    if (editing){
+      td.tabIndex = 0;
+      let editingNow = false;
+
+      function enterEdit(){
+        if (editingNow) return;
+        editingNow = true;
+        div.classList.add('editing');
+        inner.setAttribute('contenteditable','true');
+        inner.focus();
+        const r = document.createRange(); r.selectNodeContents(inner);
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); sel.collapseToEnd();
+      }
+
+      function leaveEdit(commit){
+        if (!editingNow) return;
+        inner.removeAttribute('contenteditable');
+        div.classList.remove('editing');
+        editingNow = false;
+
+        if (commit){
+          const newRaw = inner.textContent.trim();
+          const origVal = ORIGINAL_ROWS.find(r => r.model_number === model)?.[field] ?? '';
+
+          // Applications：集合等價比較、送陣列；其餘欄位送字串
+          if (field === 'applications'){
+            const arr = splitApps(newRaw);
+            const origArr = splitApps(origVal);
+
+            if (!equalApps(arr, origArr)){
+              ensureDirty(model)[field] = arr;  // 後端吃陣列
+            }else{
+              if (dirty[model]){ delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
+            }
+
+            const rowRef = rows.find(r => r.model_number === model);
+            if (rowRef) rowRef[field] = joinApps(arr); // 目前值：每行一個
+          }else{
+            if (newRaw !== (value || '')) {
+              value = newRaw;
+              ensureDirty(model)[field] = newRaw || null;
+            }
+            if (norm(newRaw) === norm(origVal)) {
+              if (dirty[model]){ delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
+            }
+            const rowRef = rows.find(r => r.model_number === model);
+            if (rowRef) rowRef[field] = newRaw || null;
+          }
+
+          applyVerifyVisual(model);
+        } else {
+          inner.textContent = value || '';
+        }
+      }
+
+      // ★ 雙擊啟動編輯
+      td.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.tip')) return;
+        enterEdit();
+      });
+
+      // 鍵盤：Applications 支援 Shift+Enter 換行；其他欄位 Enter 提交
+      td.addEventListener('keydown', (e) => {
+        if (!editingNow) return;
+
+        if (field === 'applications' && e.key === 'Enter' && e.shiftKey){
+          e.preventDefault();
+          document.execCommand('insertLineBreak'); // 在 caret 插入換行
+          return;
+        }
+        if (e.key === 'Enter'){ e.preventDefault(); leaveEdit(true); }
+        if (e.key === 'Escape'){ e.preventDefault(); leaveEdit(false); }
+      });
+
+      // 失焦提交
+      inner.addEventListener('blur', () => leaveEdit(true));
+    }
+  }
+
+  /* 儲存全部（依規則補 verify + reviewer；reviewed_at 由後端自動寫） */
+  async function saveAllChanges() {
+    const globalReviewer = (document.getElementById('globalReviewer').value || '').trim();
+    const payloads = new Map();
+
+    // 先收集有編輯過的列（dirty）
+    for (const [model, changes] of Object.entries(dirty)) {
+      payloads.set(model, { ...changes });
+    }
+
+    // 依規則補上 verify / reviewer
+    for (const row of rows) {
+      const model = row.model_number;
+      const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
+      const wasVerified = orig?.verify_status === 'verified';
+      const hasEdits = payloads.has(model) || isRowChanged(model);
+
+      if (!wasVerified) {
+        const p = payloads.get(model) || {};
+        p.verify_status = 'verified';
+        if (globalReviewer) p.reviewer = globalReviewer;
+        payloads.set(model, p);
+      } else if (hasEdits) {
+        const p = payloads.get(model) || {};
+        p.verify_status = 'verified';
+        if (globalReviewer) p.reviewer = globalReviewer;
+        payloads.set(model, p);
+      }
+      // 已驗證且無修改 → 不送 PATCH
+    }
+
+    if (payloads.size === 0) { alert('沒有變更'); return; }
+
+    try {
+      for (const [model, payload] of payloads.entries()) {
+        const resp = await fetch(`/api/models/${encodeURIComponent(model)}`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if (!resp.ok){
+          const t = await resp.text().catch(()=> '');
+          throw new Error(`${model} 儲存失敗：${t}`);
+        }
+      }
+
+      // 重置 & 重載
+      dirty = {};
+      const modelsFromDb = await fetchAllModelsFromApi(MODEL_NUMBERS);
+      rows = modelsFromDb.map(buildRowObj);
+      ORIGINAL_ROWS = deepClone(rows);
+      rows.forEach(r => delete r._ui_verify);
+      renderGrid();
+      alert('已儲存所有變更');
+    } catch(e){
+      alert(e.message || e);
+    }
   }
 </script>
 {% endblock %}

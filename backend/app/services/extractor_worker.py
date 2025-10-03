@@ -225,8 +225,8 @@ class ExtractorWorker:
                 # 已被 stop() 標記中止，不覆寫狀態
                 return
 
-            # 成功：寫回各欄位
-            t.status = "succeeded"
+            # 寫回各欄位
+            t.status = res.get("status")
             t.response_path = res.get("out_path")
             t.cost_usd = res.get("cost_usd")
             t.prompt_tokens = res.get("prompt_tokens")           # input + cached_input
@@ -236,12 +236,9 @@ class ExtractorWorker:
 
             # 細項 tokens（若你已在 models.py 新增欄位）
             usage = (res.get("usage") or {})
-            if hasattr(t, "input_tokens"):
-                t.input_tokens = usage.get("input")
-            if hasattr(t, "cached_input_tokens"):
-                t.cached_input_tokens = usage.get("cached_input")
-            if hasattr(t, "output_tokens"):
-                t.output_tokens = usage.get("output")
+            t.input_tokens = usage.get("input")
+            t.cached_input_tokens = usage.get("cached_input")
+            t.output_tokens = usage.get("output")
 
             t.completed_at = datetime.now(timezone.utc)
             db.commit()

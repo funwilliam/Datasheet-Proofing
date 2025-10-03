@@ -2,30 +2,21 @@
 
 {% block head_extra %}
 <style>
-    .tabs {
-        display: flex;
-        gap: 6px;
-        margin: 8px 0;
-    }
+  .tabs{display:flex;gap:6px;margin:8px 0}
+  .tabs>button{padding:6px 10px;border:1px solid #e5e7eb;background:#f8fafc;border-radius:8px;cursor:pointer}
+  .tabs>button.active{background:#e2e8f0}
+  .hidden{display:none}
+  td pre{white-space:pre-wrap;max-width:360px}
 
-    .tabs>button {
-        padding: 6px 10px;
-        border: 1px solid #e5e7eb;
-        background: #f8fafc;
-    }
+  /* 按鈕樣式（與 files.html 對齊） */
+  .btn{display:inline-block;padding:6px 10px;border-radius:8px;font-size:14px;line-height:20px;text-decoration:none;cursor:pointer;border:1px solid transparent;background:#fff;color:#111827}
+  .btn:focus{outline:2px solid rgba(59,130,246,.5);outline-offset:2px}
+  .btn-outline{background:#fff;color:#111827;border:1px solid #e5e7eb}
+  .btn-outline:hover{background:#f3f4f6}
+  .btn-sm{padding:4px 8px;font-size:13px;border-radius:7px}
 
-    .tabs>button.active {
-        background: #e2e8f0;
-    }
-
-    .hidden {
-        display: none;
-    }
-
-    td pre {
-        white-space: pre-wrap;
-        max-width: 360px;
-    }
+  /* 操作列容器（與 files.html 對齊） */
+  .row-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-start}
 </style>
 {% endblock %}
 
@@ -150,10 +141,17 @@
         return res.json();
     }
     function dlRow(t) {
-        const fh = t.file_hash ? `<a href="/files/${t.file_hash}"><code>${t.file_hash.slice(0, 8)}</code></a>` : '';
+        const fh = t.file_hash ? `<a href="/files/${t.file_hash}"><code>${t.file_hash.slice(0,8)}</code></a>` : '';
         const err = t.error ? `<pre>${t.error}</pre>` : '';
-        const time = [t.created_at && ('C:' + t.created_at), t.started_at && ('S:' + t.started_at), t.completed_at && ('E:' + t.completed_at)].filter(Boolean).join('<br/>');
-        const retryBtn = (t.status === 'failed' || t.status === 'queued') ? `<button class="retry" data-id="${t.id}">重試</button>` : '';
+        const time = [
+            t.created_at && ('C:' + t.created_at),
+            t.started_at && ('S:' + t.started_at),
+            t.completed_at && ('E:' + t.completed_at)
+        ].filter(Boolean).join('<br/>');
+
+        const retryBtn = (t.status === 'failed' || t.status === 'queued')
+            ? `<button class="btn btn-outline btn-sm retry" data-id="${t.id}">重試</button>` : '';
+
         return `<tr>
             <td>${t.id}</td>
             <td style="max-width:420px;word-break:break-all;">${t.source_url}</td>
@@ -162,8 +160,8 @@
             <td>${fh}</td>
             <td>${err}</td>
             <td>${time}</td>
-            <td>${retryBtn}</td>
-            </tr>`;
+            <td><div class="row-tools">${retryBtn}</div></td>
+        </tr>`;
     }
     async function renderDownloads() {
         const arr = await fetchDownloads();
@@ -244,17 +242,13 @@
     function exRow(t) {
         const tokensSummary = (() => {
             if (t.input_tokens != null || t.cached_input_tokens != null || t.output_tokens != null) {
-                const i = t.input_tokens ?? 0;
-                const c = t.cached_input_tokens ?? 0;
-                const o = t.output_tokens ?? 0;
-                const prompt = (t.prompt_tokens ?? (i + c));
-                const comp = (t.completion_tokens ?? o);
-                return `${prompt} / ${comp}<br/><span class="muted">(I:${i}, CI:${c}, O:${o})</span>`;
+            const i = t.input_tokens ?? 0, c = t.cached_input_tokens ?? 0, o = t.output_tokens ?? 0;
+            const prompt = (t.prompt_tokens ?? (i + c));
+            const comp = (t.completion_tokens ?? o);
+            return `${prompt} / ${comp}<br/><span class="muted">(I:${i}, CI:${c}, O:${o})</span>`;
             } else {
-                // 後端若尚未提供細項，沿用舊版
-                const p = t.prompt_tokens ?? '-';
-                const comp = t.completion_tokens ?? '-';
-                return `${p} / ${comp}`;
+            const p = t.prompt_tokens ?? '-', comp = t.completion_tokens ?? '-';
+            return `${p} / ${comp}`;
             }
         })();
 
@@ -267,7 +261,18 @@
             t.completed_at && ('E:' + formatIso(t.completed_at))
         ].filter(Boolean).join('<br/>');
 
-        const out = t.response_path ? `<a href="/api/static/?path=${encodeURIComponent(t.response_path.replace(/\\/g, "/"))}" target="_blank">JSON</a>` : '';
+        const jsonHref = t.response_path
+            ? `/api/static/?path=${encodeURIComponent(String(t.response_path).replace(/\\/g,"/"))}`
+            : null;
+        const canReview = Boolean(t.file_hash && (t.status === 'succeeded' || t.status === 'canceled'));
+        const reviewHref = canReview ? `/review/${t.file_hash}` : null;
+
+        const actionsHtml = `
+            <div class="row-tools">
+            ${jsonHref ? `<a class="btn btn-outline btn-sm" href="${jsonHref}" target="_blank" rel="noopener">檢視結果</a>` : ''}
+            ${reviewHref ? `<a class="btn btn-outline btn-sm" href="${reviewHref}">開啟校對</a>` : ''}
+            </div>`;
+
         const err = t.error ? `<pre>${t.error}</pre>` : '';
 
         return `<tr>
@@ -280,7 +285,7 @@
             <td>${tokensSummary}</td>
             <td>${cost}</td>
             <td>${time}</td>
-            <td>${out}</td>
+            <td>${actionsHtml}</td>
             <td>${err}</td>
         </tr>`;
     }
