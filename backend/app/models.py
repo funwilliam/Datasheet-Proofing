@@ -1,11 +1,12 @@
 # backend/app/models.py
 from sqlalchemy import (
     Column, Integer, String, Text, ForeignKey, CheckConstraint, UniqueConstraint,
-    Float, JSON, DateTime, Index
+    Float, JSON, Index
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 from .db import Base
+from .db_types import AwareDateTime # 自訂義的 Datetime 修飾器
 
 class FileAsset(Base):
     __tablename__ = "file_asset"
@@ -14,7 +15,7 @@ class FileAsset(Base):
     source_url  = Column(Text, nullable=True)
     size_bytes  = Column(Integer, nullable=True)
     local_path  = Column(Text, nullable=False)
-    created_at  = Column(DateTime, nullable=False)
+    created_at  = Column(AwareDateTime, nullable=False)
     
     # 關聯物件（1 ↔ N）
     appearances = relationship(
@@ -58,7 +59,7 @@ class ModelItem(Base):
 
     verify_status           = Column(String, nullable=False, default="unverified")
     reviewer                = Column(String, nullable=True)
-    reviewed_at             = Column(DateTime, nullable=True)
+    reviewed_at             = Column(AwareDateTime, nullable=True)
     notes                   = Column(Text, nullable=True)
 
     # N ↔ 1 關聯物件
@@ -108,9 +109,9 @@ class DownloadTask(Base):
     file_hash       = Column(String, nullable=True)
     error           = Column(Text, nullable=True)
 
-    created_at      = Column(DateTime, nullable=False)
-    started_at      = Column(DateTime, nullable=True)
-    completed_at    = Column(DateTime, nullable=True)
+    created_at      = Column(AwareDateTime, nullable=False)
+    started_at      = Column(AwareDateTime, nullable=True)
+    completed_at    = Column(AwareDateTime, nullable=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # OpenAI 擷取任務（task）
@@ -151,7 +152,7 @@ class ExtractionTask(Base):
     schema_version          = Column(String, nullable=True)      # 你 resources/openai/response_format 版本號
 
     # 事件時間
-    created_at              = Column(DateTime, nullable=False)
-    submitted_at            = Column(DateTime, nullable=True)  # 對外送出時間（batch/bg）
-    started_at              = Column(DateTime, nullable=True)    # 真正執行時間（可選）
-    completed_at            = Column(DateTime, nullable=True)
+    created_at              = Column(AwareDateTime, nullable=False)
+    submitted_at            = Column(AwareDateTime, nullable=True)  # 對外送出時間（batch/bg）
+    started_at              = Column(AwareDateTime, nullable=True)    # 真正執行時間（可選）
+    completed_at            = Column(AwareDateTime, nullable=True)

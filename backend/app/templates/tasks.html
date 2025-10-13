@@ -144,9 +144,9 @@
         const fh = t.file_hash ? `<a href="/files/${t.file_hash}"><code>${t.file_hash.slice(0,8)}</code></a>` : '';
         const err = t.error ? `<pre>${t.error}</pre>` : '';
         const time = [
-            t.created_at && ('C:' + t.created_at),
-            t.started_at && ('S:' + t.started_at),
-            t.completed_at && ('E:' + t.completed_at)
+            t.created_at && ('建立：\t' + t.created_at),
+            t.started_at && ('開始：\t' + t.started_at),
+            t.completed_at && ('結束：\t' + t.completed_at)
         ].filter(Boolean).join('<br/>');
 
         const retryBtn = (t.status === 'failed' || t.status === 'queued')
@@ -230,13 +230,6 @@
             }
         }
     };
-    const fmtTimeCell = (c, s, e) => {
-        const parts = [];
-        if (c) parts.push(`建立：${fmtLocal(c)}（${relTime(c)}）`);
-        if (s) parts.push(`開始：${fmtLocal(s)}（${relTime(s)}）`);
-        if (e) parts.push(`結束：${fmtLocal(e)}（${relTime(e)}）`);
-        return parts.join('<br/>');
-    };
 
     // ── Extraction table
     function exRow(t) {
@@ -255,10 +248,10 @@
         const extIds = t.external_ids ? JSON.stringify(t.external_ids) : '';
         const cost = (t.cost_usd != null) ? ('$' + t.cost_usd.toFixed(4)) : '-';
         const time = [
-            t.created_at && ('C:' + formatIso(t.created_at)),
-            t.submitted_at && ('Sb:' + formatIso(t.submitted_at)),
-            t.started_at && ('S:' + formatIso(t.started_at)),
-            t.completed_at && ('E:' + formatIso(t.completed_at))
+            t.created_at && ('建立：\t' + formatIso(t.created_at)),
+            t.submitted_at && ('提交：\t' + formatIso(t.submitted_at)),
+            t.started_at && ('開始：\t' + formatIso(t.started_at)),
+            t.completed_at && ('結束：\t' + formatIso(t.completed_at))
         ].filter(Boolean).join('<br/>');
 
         const jsonHref = t.response_path

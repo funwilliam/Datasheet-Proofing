@@ -57,18 +57,18 @@
   <h2>型號清單</h2>
 
   <div class="tools">
-    <input id="q" class="input" placeholder="搜尋型號（完整或部分）…">
     <select id="status" class="select" title="驗證狀態">
       <option value="">全部狀態</option>
       <option value="verified">已驗證</option>
       <option value="unverified">未驗證</option>
     </select>
+    <input id="q" class="input" placeholder="搜尋型號（完整或部分）…">
     <button type="button" id="btnSearch" class="btn btn-outline">搜尋</button>
 
     <div class="right">
       <span id="selCount" class="badge" style="background:#F3F4F6;color:#374151">已選 0</span>
-      <button type="button" id="btnExport" class="btn btn-primary" disabled>匯出</button>
-      <button type="button" id="btnDelete" class="btn btn-danger" disabled>刪除選取</button>
+      <button type="button" id="btnExport" class="btn btn-primary">匯出</button>
+      <button type="button" id="btnDelete" class="btn btn-danger" disabled>刪除多筆型號</button>
     </div>
   </div>
 
@@ -150,10 +150,8 @@ let items=[]; let selected=new Set();
 function updateSelectionUI(){
   const n = selected.size;
   const c = document.getElementById('selCount');
-  const be = document.getElementById('btnExport');
   const bd = document.getElementById('btnDelete');
   if (c) c.textContent = `已選 ${n}`;
-  if (be) be.disabled = n === 0;
   if (bd) bd.disabled = n === 0;
 }
 
@@ -363,7 +361,7 @@ async function collectAllModelNumbers(){
 /* 批次刪除 */
 QS('btnDelete').onclick = async ()=>{
   const ids=Array.from(selected); if(!ids.length){ alert('尚未選取任何型號'); return; }
-  if(!confirm(`將刪除 ${ids.length} 筆型號與其關聯，確定？`)) return;
+  if(!confirm(`注意！你正在刪除 ${ids.length} 筆型號與其關聯，確定執行？`)) return;
   let ok=0,fail=0; for(const m of ids){ try{ await deleteModel(m); ok++; }catch{ fail++; } }
   alert(`刪除完成：成功 ${ok}、失敗 ${fail}`);
   selected.clear();
