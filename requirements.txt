@@ -4,7 +4,7 @@ sqlalchemy
 pydantic
 pydantic-settings
 python-multipart
-openai
+openai>=1.109.1,<2.0
 pypdf
 aiohttp
 jinja2

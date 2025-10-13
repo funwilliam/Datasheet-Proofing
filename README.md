@@ -1,200 +1,377 @@
-# Datasheet Proofing — 專案導覽（Proposed README）
+# Datasheet Proofing
 
-> 本文件為依照程式碼實際行為整理的最新專案導覽，涵蓋所有頁面路徑與 API 端點、參數與注意事項。
+以 **FastAPI + Jinja2** 打造的**資料表（datasheet）校對系統**：支援上傳/下載 PDF、呼叫 OpenAI 進行規格擷取、在瀏覽器端校對與匯出結果。  
+本文件為**長期維護**所寫，假設讀者**不曾參與開發**，照做即可把系統跑起來、理解資料流、並定位常見問題。
 
 ---
 
-## Pages（前端頁面）
+## 系統資料流（總覽）
+
+> 供維護者快速建立心智模型。支援 GitHub/Markdown 的 Mermaid 圖示；若無法渲染，請將下列區塊貼到支援 Mermaid 的環境檢視。
+
+```mermaid
+flowchart LR
+  subgraph UI[Web UI (Jinja2 Pages)]
+    F[/ /files /]
+    R[/ /review/{file_hash} /]
+    M[/ /models /]
+    T[/ /tasks /]
+  end
+
+  subgraph API[FastAPI Routers (/api/*)]
+    A1[/files/]
+    A2[/downloads/]
+    A3[/tasks/]
+    A4[/extractions/]
+    A5[/models/]
+    A6[/export/]
+    A7[/static/]
+  end
+
+  subgraph SVC[services/*]
+    DWD[downloader_worker.py]
+    EXT[extractor_worker.py]
+    FS[file_store.py]
+  end
+
+  subgraph WS[workspace/* (持久化)]
+    STORE[(store/<hash>.pdf)]
+    EXTR[(extractions/<hash>.json)]
+    DB[(review.sqlite3)]
+    EXP[(exports/*)]
+  end
+
+  F -->|上傳/貼URL| A1
+  F -->|批次下載| A2
+  F -->|觸發擷取| A3
+  R -->|讀取/校對| A4 --> EXTR
+  M -->|查詢/編輯| A5 --> DB
+  T -->|查詢狀態| A2 & A3
+
+  A1 -->|上傳成功| FS --> STORE & DB
+  A2 -->|enqueue| DWD --> STORE --> DB
+  A3 -->|queue| EXT --> EXTR --> DB
+  A6 -->|JSON/CSV| EXP
+  A7 -->|白名單JSON| EXTR & EXP
+```
+
+---
+
+## 目錄
+- [系統需求](#系統需求)
+- [快速開始（TL;DR）](#快速開始tldr)
+- [安裝與環境變數](#安裝與環境變數)
+- [專案結構與資料儲存](#專案結構與資料儲存)
+- [啟動與停止（Windows/跨平台）](#啟動與停止windows跨平台)
+- [Web UI 導覽](#web-ui-導覽)
+- [API 一覽與範例](#api-一覽與範例)
+- [資料流與元件關係](#資料流與元件關係)
+- [疑難排解（FAQ）](#疑難排解faq)
+- [維護者指南](#維護者指南)
+- [版本與相容性](#版本與相容性)
+- [安全注意事項](#安全注意事項)
+- [變更摘要（相對舊版 README）](#變更摘要相對舊版-readme)
+
+---
+
+## 系統需求
+- Python **3.10+**（建議 3.11）
+- OS：Windows 10/11（附 PowerShell 腳本）、macOS、Linux 皆可
+- 不需 GPU
+- 可連外網以呼叫 OpenAI API（若要使用擷取功能）
+
+---
+
+## 快速開始（TL;DR）
+
+```bash
+# 1) 建置虛擬環境並啟用
+python -m venv venv
+# Windows:
+venv\Scripts\Activate.ps1
+# macOS/Linux:
+source venv/bin/activate
+
+# 2) 安裝依賴
+pip install -r requirements.txt
+
+# 3) 建 .env（至少要有 OPENAI_API_KEY 才能做擷取）
+#   WINDOWS: Notepad .env
+#   MAC/LINUX: nano .env
+# 內容示例見下節「安裝與環境變數」
+
+# 4) 啟動（跨平台）
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level debug
+# 瀏覽器開 http://127.0.0.1:8000
+```
+
+**Windows 一鍵版（含防睡眠/自動開瀏覽器/寫入 PID 與 log）**  
+```powershell
+.\script\run.ps1    # 啟動
+.\script\shutdown.ps1  # 停止並恢復系統睡眠
+```
+
+---
+
+## 安裝與環境變數
+
+專案使用 `pydantic` 設定。請在專案根目錄建立 `.env` 檔：
+
+| 變數 | 是否必填 | 預設值 | 說明 |
+|---|---:|---|---|
+| `OPENAI_API_KEY` | 必填（擷取功能） | — | OpenAI API 金鑰。未提供則仍可上傳/下載/瀏覽 PDF，但**無法做規格擷取**。 |
+| `HOST` | 選填 | `127.0.0.1` | 服務綁定位址（只影響程式內部讀值；用 `uvicorn` 指令時以指令旗標為準） |
+| `PORT` | 選填 | `8000` | 同上 |
+| `DEBUG` | 選填 | `true` | FastAPI/應用邏輯內的除錯開關 |
+| `DEBUG_DEVTOOLS` | 選填 | `false` | 若開啟，啟動時可能載入開發者工具；預設請關閉 |
+
+> 註：實際可用鍵值以 `backend/app/settings.py` 為準；上表列出最影響啟動與擷取流程者。
+
+安裝依賴：
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 專案結構與資料儲存
+
+```
+backend/
+  app/
+    main.py                 # FastAPI 入口，掛載 Jinja2 模板與路由
+    routers/                # 所有 REST API 分組
+    templates/              # 前端頁面（Jinja2）
+    static/                 # 前端靜態資源
+services/
+  downloader_worker.py      # 下載 PDF 的佇列/工作
+  extractor_worker.py       # 呼叫 OpenAI 擷取規格的佇列/工作
+  file_store.py             # PDF 與檔案中繼資料（FileAsset）存取
+workspace/                  # 自動建立/持久化資料（見下）
+script/
+  run.ps1                   # Windows 一鍵啟動（防睡眠/背景常駐/自動開瀏覽器/寫 log）
+  shutdown.ps1              # Windows 一鍵停止（依 PID 結束/恢復睡眠）
+requirements.txt
+```
+
+**工作目錄（`workspace/`）** — 請備份此目錄；含系統狀態與輸出：
+- `workspace/store/{file_hash}.pdf`：上傳/下載後的 PDF 實檔
+- `workspace/extractions/{file_hash}.json`：擷取輸出（AI 結果）
+- `workspace/review.sqlite3`：後端資料庫（SQLite，預設 WAL）
+
+---
+
+## 啟動與停止（Windows/跨平台）
+
+### Windows（建議）
+```powershell
+.\script\run.ps1
+# 內容包含：
+# - 建立 venv、安裝 requirements（首次）
+# - 設定防睡眠（不影響螢幕自動關閉）
+# - 背景啟動 uvicorn（非緩衝輸出，stdout/stderr 寫入 log）
+# - 記錄 PID 到 log/server.pid
+# - 啟動成功自動打開 http://localhost:8000
+
+.\script\shutdown.ps1
+# 內容包含：
+# - 依 PID 停止 uvicorn 主程序及子程序
+# - 刪除 server.pid
+# - 呼叫 Windows API 恢復預設睡眠行為
+```
+
+### macOS / Linux（或手動）
+```bash
+python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level debug
+```
+
+**日誌與 PID**
+- `log/core_stdout.log`, `log/core_stderr.log`
+- `log/server.pid`
+
+---
+
+## Web UI 導覽
 
 | 路徑 | 用途 | 主要功能 |
 |---|---|---|
-| `/` | 入口 | 307 redirect -> `/files` |
-| `/files` | 檔案管理 | 列表 + 分頁、上傳 PDF（多檔）、批次貼 URL 入列（下載）、觸發擷取任務、快速連結至檔案詳情與校對 |
-| `/files/{file_hash}` | 檔案詳情 | 檔案中繼資料（hash、檔名、建立時間、是否已解析）、快捷操作（開啟 PDF、整份校對）、關聯型號列表、解除檔案與型號關聯 |
-| `/review/{file_hash}` | 校對頁 | 左側 PDF.js 預覽 + 全文搜尋；右側規格欄位編輯（雙擊儲存格進入編輯、Enter 儲存、Esc 取消）；欄位 hover 顯示 AI 擷取依據；整份/逐欄位校對與驗證 |
-| `/models` | 型號管理 | 型號清單（搜尋、分頁、是否已驗證/是否有檔案過濾）、規格參數編輯 Modal、標記已驗證（記錄 reviewer 與 reviewed_at）|
-| `/tasks` | 佇列監控 | 下載任務與擷取任務的即時列表、依狀態過濾、重試下載（失敗項）|
-| `/pdf/{file_hash}` | PDF 直出 | 直接回傳 PDF 檔（二進位），可被瀏覽器或外部工具開啟 |
+| `/` | 入口 | 307 轉址至 `/files` |
+| `/files` | 檔案管理 | 列表/分頁、上傳 PDF（多檔）、批次貼 URL 入列下載、觸發擷取、連至詳情與校對 |
+| `/files/{file_hash}` | 檔案詳情 | 檔案中繼、是否已擷取、關聯型號列表、解除檔案×型號關聯 |
+| `/review/{file_hash}` | 校對頁 | 左側 PDF 預覽＋全文搜尋；右側規格欄位可編輯（雙擊進入、Enter 儲存、Esc 取消）；可檢視 AI 依據 |
+| `/models` | 型號管理 | 清單、搜尋、是否已驗證/是否有檔案過濾；規格編輯；標記已驗證（寫入 reviewer/時間） |
+| `/tasks` | 佇列監控 | 下載任務／擷取任務狀態、篩選、重試下載（失敗） |
+| `/pdf/{file_hash}` | PDF 直出 | 回傳 PDF，供瀏覽器或外部工具開啟 |
 
 ---
 
-## API（後端端點）
+## API 一覽與範例
+
+> 伺服器預設 `http://127.0.0.1:8000`。以下僅列要點與關鍵參數，實作詳見 `backend/app/routers/*`。
 
 ### 1) Files — `/api/files`
+- `GET /api/files`：檔案列表  
+  Query：`page`（default 1）、`page_size`（1~500，default 50）
 
-- `GET /api/files`  
-  **用途**：檔案列表（分頁）。  
-  **Query**：
-  - `page` (int, ≥1, default 1)
-  - `page_size` (int, 1~500, default 50)  
-  **Response**：`{ items: [...], total, page, page_size }`；每個 item 含 `file_hash, filename, source_url, size_bytes, local_path, created_at, parsed`。
+- `GET /api/files/{file_hash}`：單檔資訊
 
-- `GET /api/files/{file_hash}`  
-  **用途**：單檔資訊。  
-  **Response**：`FileAssetOut` + `parsed`（布林；是否已有 `/workspace/extractions/{file_hash}.json`）。
+- `POST /api/files/upload-multi`（multipart/form-data）：多檔上傳  
+  範例：
+  ```bash
+  curl -F "files=@A.pdf" -F "files=@B.pdf" http://127.0.0.1:8000/api/files/upload-multi
+  ```
 
-- `POST /api/files/upload-multi` (multipart/form-data)  
-  **用途**：多檔上傳。欄位：`files`（可多個）。  
-  **Response**：`{ uploaded, items: [{ file_hash, filename }, ...] }`。
+- `POST /api/files/upload-urls`（form-data）：批次貼 URL 入列下載  
+  欄位：多筆 `urls`、可選 `hsd_name`  
+  範例：
+  ```bash
+  curl -X POST -F "urls=https://example.com/a.pdf" -F "urls=https://example.com/b.pdf" -F "hsd_name=ACME" http://127.0.0.1:8000/api/files/upload-urls
+  ```
 
-- `POST /api/files/upload-urls` (form-data)  
-  **用途**：貼上多個下載 URL，轉呼叫 `/api/downloads/enqueue` 入列。  
-  **Body**：
-  - `urls`（多筆；每列一個 URL）
-  - `hsd_name`（可選）  
-  **Response**：`{ queued, task_ids: [...] }`。
+- `GET /api/files/{file_hash}/models`：該檔案關聯的型號列表
 
-- `GET /api/files/{file_hash}/models`  
-  **用途**：列出該檔案關聯的型號（含每個型號曾出現過的所有檔案）。  
-  **Response**：`ModelItemOut[]`（精簡版，含 `files: [{file_hash, filename}]`）。
-
-- `DELETE /api/files/{file_hash}/models/{model_number}`  
-  **用途**：解除檔案與型號的關聯。  
-  **注意**：程式碼中**沒有**對應的「建立關聯」API；連結由擷取流程或後台維護（PATCH /api/models/{model_number}）處理。
+- `DELETE /api/files/{file_hash}/models/{model_number}`：解除檔案×型號關聯  
+  > **注意**：目前**沒有**「建立關聯」API；建立關聯來自擷取流程或更新型號資訊。
 
 ---
 
 ### 2) Downloads — `/api/downloads`
+- `POST /api/downloads/enqueue`：批次將 URL 入列下載  
+  Body（JSON）：`["https://.../a.pdf","https://.../b.pdf"]`；Query 可帶 `hsd_name`  
+  範例：
+  ```bash
+  curl -X POST "http://127.0.0.1:8000/api/downloads/enqueue?hsd_name=ACME" -H "Content-Type: application/json" -d '["https://example.com/a.pdf","https://example.com/b.pdf"]'
+  ```
 
-- `POST /api/downloads/enqueue`  
-  **用途**：批次將 URL 入列為下載任務。  
-  **Body**：`urls: string[]`，`hsd_name?: string`。  
-  **行為**：建立 `DownloadTask(status='queued')` 並交由 downloader worker 執行。  
-  **Response**：`{ queued, task_ids: [...] }`。
+- `GET /api/downloads`：下載任務列表  
+  Query：`limit`（1~1000，預設 200）、`status`（`queued/running/success/failed`）
 
-- `GET /api/downloads`  
-  **用途**：下載任務列表。  
-  **Query**：
-  - `limit` (int, 1~1000, default 200)
-  - `status`（可選，`queued/running/success/failed`）  
-  **Response**：陣列；每列含 `id, source_url, hsd_name, status, file_hash, error, created_at, started_at, completed_at`。
-
-- `POST /api/downloads/{task_id}/retry`  
-  **用途**：重試指定下載任務（把狀態重置為 `queued` 並重新入列）。  
-  **Response**：`{ ok: true }`。
+- `POST /api/downloads/{task_id}/retry`：重試下載
 
 ---
 
 ### 3) Tasks（擷取佇列）— `/api/tasks`
-
-- `POST /api/tasks/queue`  
-  **用途**：將 `file_hashes` 批次入列到擷取佇列。  
-  **Body**：`{ file_hashes: string[], force_rerun?: boolean }`。  
-  **行為**：
-  - 會去重；
-  - 若 `force_rerun=false` 且已存在 `extractions/{file_hash}.json` 則跳過；
-  - 其餘丟給 extractor worker。  
-  **Response**：
+- `POST /api/tasks/queue`：將 `file_hashes` 入列進行擷取  
+  Body（JSON）：
   ```json
   {
-    "queued": <int>, "skipped_existing": <int>, "not_found": <int>,
-    "duplicates_ignored": <int>, "total_input": <int>,
-    "queued_hashes": [...], "skipped_hashes": [...], "not_found_hashes": [...]
+    "file_hashes": ["<sha256>", "..."],
+    "force_rerun": false
   }
   ```
+  回傳會清楚列出 `queued / skipped_existing / not_found / duplicates_ignored`。
 
-- `GET /api/tasks/extraction`  
-  **用途**：擷取任務列表。  
-  **Query**：
-  - `limit` (int, 1~1000, default 200)
-  - `status`（可選，`queued/submitted/running/succeeded/failed/canceled`）
-  - `mode`（可選，`sync/batch/background`）  
-  **Response**：陣列；每列含 `id, file_hash, mode, provider, openai_model, service_tier, status, prompt_tokens, completion_tokens, input_tokens, output_tokens, request_payload_path, response_path, error, created_at, submitted_at, started_at, completed_at`。
+- `GET /api/tasks/extraction`：擷取任務列表  
+  Query：`limit`（預設 200）、`status`（`queued/submitted/running/succeeded/failed/canceled`）、`mode`（`sync/batch/background`）
 
-- `GET /api/tasks/download`  
-  **用途**：下載任務列表（與 `/api/downloads` 類似，主要供 `/tasks` 頁面使用）。  
-  **Query**：同上 `limit`、`status`。
+- `GET /api/tasks/download`：下載任務列表（供 `/tasks` 頁）
 
 ---
 
 ### 4) Extractions — `/api/extractions`
-
-- `GET /api/extractions/{file_hash}`  
-  **用途**：取得某檔案最近的一筆擷取總結與該檔案的型號項目。  
-  **Response**：
-  ```json
-  {
-    "extraction": { /* ExtractionTaskOut */ },
-    "models": [{
-      "id", "file_hash", "model_number", "fields_json", "verify_status",
-      "reviewer", "reviewed_at", "notes"
-    }]
-  }
-  ```
-
-- `GET /api/extractions/{task_id}/output`  
-  **用途**：以 `task_id` 下載該次擷取輸出的 JSON 檔。  
-  **注意**：後端包含路徑白名單檢查，僅允許工作區 `extractions/` 內的檔案。
+- `GET /api/extractions/{file_hash}`：回傳該檔案的最近一筆擷取摘要＋型號項目列表
+- `GET /api/extractions/{task_id}/output`：下載該次擷取輸出的 JSON（檔案路徑具白名單限制）
 
 ---
 
 ### 5) Models — `/api/models`
+- `GET /api/models`：型號列表  
+  Query：`q`（模糊搜尋）、`status`（`verified/unverified`）、`has_files`（`true/false`）、`page`、`page_size`（1~200，預設 50）
 
-- `GET /api/models`  
-  **用途**：型號列表。  
-  **Query**：
-  - `q`（可選；以 `model_number` LIKE 模糊搜尋）
-  - `status`（可選；`verified`／`unverified`）
-  - `has_files`（可選；`true/false`）
-  - `page`（default 1）, `page_size`（1~200, default 50）  
-  **Response**：`{ items, total, page, page_size }`，每個 item 含 `model_number` 與關聯檔案清單。
+- `GET /api/models/{model_number}`：單一型號詳情
 
-- `GET /api/models/{model_number}`  
-  **用途**：單一型號詳情。  
-  **Response**：規格欄位（`input_voltage_range, output_voltage, output_power, package, isolation, insulation, applications[], dimension`）、驗證資訊（`verify_status, reviewer, reviewed_at`）、`notes`、以及 `files: [{file_hash, filename}]`。
+- `PATCH /api/models/{model_number}`：部分更新（規格欄位／驗證狀態與 reviewer/時間／notes）  
+  > 若修改任何規格欄位且原本為 `verified`，系統會自動改為 `unverified` 並清空 `reviewer / reviewed_at`；  
+  > 若 PATCH 指定 `verify_status=verified`，後端會寫入 reviewer 與 reviewed_at（以伺服器時間為準）。
 
-- `PATCH /api/models/{model_number}`  
-  **用途**：更新型號資訊（部分欄位）。  
-  **Body**（任選欄位）：上述規格欄位 + `verify_status`（`verified/unverified`）、`reviewer`、`notes`。  
-  **驗證規則**：若修改任何規格欄位且原本為 `verified`，會自動改為 `unverified` 並清空 `reviewer / reviewed_at`；若 PATCH 指定 `verify_status=verified`，則會寫入 `reviewer` 與 `reviewed_at`（由伺服器端設定為現在時間）。
-
-- `DELETE /api/models/{model_number}`  
-  **用途**：刪除整個型號（連同 applications 與 file 關聯，靠外鍵級聯）。
+- `DELETE /api/models/{model_number}`：刪除整個型號（含應用標籤與檔案關聯，依外鍵級聯）
 
 ---
 
 ### 6) Export — `/api/export`
+- `GET /api/export`：全庫匯出  
+  Query：`status`（可選）、`fmt`（`json` 預設或 `csv`，CSV 以附件串流下載檔名 `models_export.csv`）
 
-- `GET /api/export`  
-  **用途**：全庫匯出。  
-  **Query**：
-  - `status`（可選；例：`verified` 或 `unverified`）
-  - `fmt`（預設 `json`，可為 `json` 或 `csv`）  
-  **備註**：`fmt=csv` 會以串流下載；固定檔名 `models_export.csv`。
-
-- `POST /api/export/by-models`  
-  **用途**：指定型號清單匯出（可非常長）。  
-  **Body**：
+- `POST /api/export/by-models`：依**指定型號清單**匯出  
+  Body（JSON）：
   ```json
-  { "model_numbers": ["ABC-123", "..."], "status": "verified", "fmt": "json|csv", "preserve_order": false }
+  {
+    "model_numbers": ["ABC-123","XYZ-999"],
+    "status": "verified",
+    "fmt": "csv",
+    "preserve_order": true
+  }
   ```
-  **備註**：`preserve_order=true` 時輸出順序與 `model_numbers` 相同；空清單時 `json` 回空陣列、`csv` 回空檔。
+  `preserve_order=true` 會照 `model_numbers` 原順序輸出；空清單時 `json` 為 `[]`、`csv` 為空檔。
 
 ---
 
 ### 7) Static Proxy — `/api/static`
-
-- `GET /api/static?path=...`  
-  **用途**：以白名單代理方式回傳 JSON 檔案。  
-  **Query**：`path`（工作區**絕對路徑**或 repo-root 相對路徑）。  
-  **安全限制**：僅允許 `workspace/extractions/` 與 `workspace/exports/` 之下的檔案，其他路徑一律拒絕。
+- `GET /api/static?path=...`：以白名單代理回傳 JSON 檔  
+  安全限制：**僅允許** `workspace/extractions/` 與 `workspace/exports/` 下的檔案
 
 ---
 
-## 注意事項（跨端點）
-- `status` 字串值請依端點註解；下載任務使用 `queued/running/success/failed`，擷取任務則為 `queued/submitted/running/succeeded/failed/canceled`。
-- 所有時間欄位以 ISO 8601 字串回傳（UTC）。
-- `applications` 欄位在前端編輯時為「每行一個」；後端以陣列儲存。
-- PDF 檔案二進位透過 `GET /pdf/{file_hash}` 直接回應；若需 JSON 結果，使用 `/api/extractions/{task_id}/output` 或 `/api/static?path=...`。
+## 資料流與元件關係
+
+1. **檔案進來**  
+   - 使用者上傳 PDF（`/api/files/upload-multi`），或貼 URL 入列下載（`/api/files/upload-urls` → `/api/downloads/enqueue`）。  
+   - 下載 worker 寫入 `workspace/store/{file_hash}.pdf`，並建立/更新 `FileAsset` 紀錄。
+
+2. **觸發擷取**  
+   - 使用者在 `/files` 或 `/review/{file_hash}` 觸發擷取（`/api/tasks/queue`）。  
+   - extractor worker 呼叫 OpenAI，將輸出寫入 `workspace/extractions/{file_hash}.json`，並據此更新/建立 Model 記錄及其欄位。
+
+3. **校對與驗證**  
+   - 於 `/review/{file_hash}` 編輯欄位、在 `/models` 管理與驗證。  
+   - 若更動已驗證資料，系統自動轉為未驗證，避免誤信舊標記。
+
+4. **匯出**  
+   - 以 `/api/export` / `/api/export/by-models` 取得 JSON/CSV。  
+   - 可用 `/api/static` 代理讀取白名單內的 JSON 檔案。
 
 ---
 
-## 與舊版 README 的差異 / 更新點（一覽）
-- 上傳端點改名：`POST /api/files/upload-multi`、`POST /api/files/upload-urls`（舊文檔出現 `/upload`、`/urls` 的描述已過期）。
-- `POST /api/files/{file_hash}/models/{model_number}` **不存在**（舊文檔提及建立關聯的端點）；現行僅提供 `DELETE` 解除關聯；建立關聯由擷取/資料處理流程負責或透過更新模型資訊完成。
-- 已找不到 `GET /api/files/{file_hash}/search` 端點（舊文檔列舉）；現行全文搜尋在校對頁由 PDF.js 客端完成。
-- 新增或明確化的端點：
-  - 匯出：`GET /api/export` 與 `POST /api/export/by-models`（支援超長清單與 `preserve_order`）。
-  - 擷取：`GET /api/extractions/{task_id}/output` 可直接下載該次擷取的 JSON。 
-  - 靜態代理：`GET /api/static?path=` 僅允許 `extractions/`、`exports/` 路徑。
-- 頁面導覽更新：`/files`、`/models`、`/tasks`、`/review/{file_hash}` 與 `/pdf/{file_hash}` 的實作已對齊目前模板內容與腳本。
+## 疑難排解（FAQ）
+
+- **擷取無法執行**：確認 `.env` 已設定 `OPENAI_API_KEY`（且金鑰有效）。  
+- **連不到首頁**：請使用 `http://127.0.0.1:8000`（或以 `.env`／啟動參數的 HOST/PORT 為準）。  
+- **檔案上傳成功但沒擷取結果**：到 `/tasks` 看擷取任務狀態；完成後會在 `workspace/extractions/{file_hash}.json` 出現輸出。  
+- **SQLite 檔被鎖住**：確認沒有重複啟動；Windows 用 `shutdown.ps1` 正常停止，避免殘留程序。  
+- **Windows 自動睡眠導致服務中斷**：使用 `.\script\run.ps1` 啟動；停止請用 `.\script\shutdown.ps1` 以恢復睡眠設定。  
+- **大量匯出變慢**：優先使用 `POST /api/export/by-models` 並提供精確清單；如要全庫 CSV，請預留時間並避免同時大量擷取。  
+
+---
+
+## 維護者指南
+
+- **程式入口**：`backend/app/main.py`。新增功能請在 `backend/app/routers/` 建新檔再掛到 `main.py`。  
+- **下載/擷取邏輯**：在 `services/` 目錄；若要切換模型或服務等級（service tier），先由此處下手。  
+- **工作目錄**：`workspace/` 是**唯一需要持久化/備份**的資料根目錄。  
+- **依賴更新**：修改 `requirements.txt` 後請在本機重新安裝並走一遍 `/files → /tasks → /review → /export` 的回歸路徑。  
+- **例外處理與日誌**：預設 stdout/stderr 會寫入 `log/core_*.log`；Windows 走 `run.ps1` 後更容易定位錯誤。  
+- **安全邊界**：`/api/static` 僅允許工作區白名單路徑；若新增代理功能務必維持白名單策略。  
+- **驗證機制**：PATCH 若改動已驗證模型的任一欄位，系統會自動取消驗證；請在 UI 流程中提示 reviewer 再次確認。  
+
+---
+
+## 版本與相容性
+- Python：**3.10+**（建議 3.12.1）  
+- 資料庫：SQLite（WAL）  
+- 若資料結構調整（例如新增欄位），請提供**一次性遷移腳本**或在啟動時偵測並自動遷移。
+
+---
+
+## 安全注意事項
+- **API 金鑰**：`OPENAI_API_KEY` 僅存於 `.env`；請勿提交到版本庫。  
+- **檔案代理**：`/api/static` 嚴格白名單；不得放寬至任意路徑或可執行檔型。  
+- **使用者上傳**：僅接受 PDF；若要擴充其他格式，務必補齊 MIME/type 檢查與掃描策略。  
+
+---
+
+## 變更摘要（相對舊版 README）
+- 用**中文（台灣用語）**重寫，完整覆蓋「安裝、環境、啟停、UI 導覽、API、資料流、維護、疑難排解、安全」等維護向主題。  
+- 明確指出**不存在**的端點（例如「建立檔案×型號關聯」）避免踩雷，並標注替代流程。  
+- 新增 **Windows 一鍵腳本行為說明**（防睡眠／恢復睡眠、PID、log、瀏覽器自動開啟）與**工作目錄備份**重點。  
+- 將擷取/下載任務的**狀態集合**分別列出，對齊實作（`queued/running/success/failed` vs `queued/submitted/running/succeeded/failed/canceled`）。  
+- 提供可直接執行的 `curl` 範例與最小啟動命令；對新同事**可操作**而非僅描述。  
