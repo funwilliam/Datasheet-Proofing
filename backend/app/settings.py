@@ -18,5 +18,5 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Ensure workspace subdirs
-for sub in ["inbox", "store", "extractions", "exports"]:
+for sub in ["store", "extractions"]:
     (settings.WORKSPACE_DIR / sub).mkdir(parents=True, exist_ok=True)
