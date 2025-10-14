@@ -20,7 +20,7 @@ function Remove-FolderIfExists($path) {
 }
 
 # === 要刪除的頂層資料夾 ===
-$foldersToDelete = @("venv", "build", "dist")
+$foldersToDelete = @("venv", "build", "dist", "workspace")
 
 Write-Host "🧹 開始清理專案環境..." -ForegroundColor Cyan
 
@@ -32,3 +32,5 @@ Get-ChildItem -Path . -Filter "__pycache__" -Recurse -Directory -ErrorAction Sil
     ForEach-Object { Remove-FolderIfExists $_.FullName }
 
 Write-Host "✅ 清理完成。" -ForegroundColor Green
+
+pause
