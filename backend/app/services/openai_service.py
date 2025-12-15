@@ -54,6 +54,20 @@ PRICING_PER_1M = {
     "gpt-4o":  {"input": 2.50, "cached_input": 1.25,  "output": 10.00},
 }
 
+# OpenAI 可能回傳版本化 model 名稱，例如 "gpt-5-2025-10-03"；這裡只針對日期版本做定價歸一化，避免誤把 "gpt-4o-mini" 映射成 "gpt-4o"。
+_VERSIONED_MODEL_RE = re.compile(r"^(gpt-5|gpt-4\\.1|gpt-4o)-\\d{4}-\\d{2}-\\d{2}(?:$|-)", re.IGNORECASE)
+
+def _pricing_key_for_model(model: Optional[str]) -> Optional[str]:
+    if not model:
+        return None
+    if model in PRICING_PER_1M:
+        return model
+    m = _VERSIONED_MODEL_RE.match(model)
+    if m:
+        key = m.group(1)
+        return key if key in PRICING_PER_1M else None
+    return None
+
 # ────────────────────────────── 共用小工具 ──────────────────────────────
 
 def _pick(v, *keys, default=None):
@@ -119,7 +133,8 @@ def _calc_cost(
       - mode == 'batch'          → 0.5x
       - service_tier in {'priority','scale'} → 2.0x
     """
-    rate = PRICING_PER_1M.get(model)
+    pricing_key = _pricing_key_for_model(model)
+    rate = PRICING_PER_1M.get(pricing_key) if pricing_key else None
     if not rate:
         return 0.0
 
