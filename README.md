@@ -223,12 +223,12 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 
 ### 1) Files — `/api/files`
 - `GET /api/files`：檔案列表  
-  Query：`page`（default 1）、`page_size`（1~500，default 50）
+  Query：`page`（default 1）、`page_size`（1\~500，default 50）
 
 - `GET /api/files/{file_hash}`：單檔資訊
 
 - `GET /api/files/{file_hash}/search`：在 PDF 內搜尋字串（供 `/review/{file_hash}` 使用）  
-  Query：`q`（必填）、`max_results`（1~200，default 20）、`context`（0~200，default 40）  
+  Query：`q`（必填）、`max_results`（1\~200，default 20）、`context`（0\~200，default 40）  
   回傳：`[{page, snippet, rects, page_size}, ...]`，其中 `rects` 與 `page_size` 用於前端高亮命中區塊。
 
 - `POST /api/files/upload-multi`（multipart/form-data）：多檔上傳  
@@ -260,7 +260,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
   ```
 
 - `GET /api/downloads`：下載任務列表  
-  Query：`limit`（1~1000，預設 200）、`status`（`queued/running/success/failed`）
+  Query：`limit`（1\~1000，預設 200）、`status`（`queued/running/success/failed`）
 
 - `POST /api/downloads/{task_id}/retry`：重試下載
 
@@ -286,7 +286,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 
 ### 4) Models — `/api/models`
 - `GET /api/models`：型號列表  
-  Query：`q`（模糊搜尋）、`status`（`verified/unverified`）、`has_files`（`true/false`）、`page`、`page_size`（1~200，預設 50）
+  Query：`q`（模糊搜尋）、`status`（`verified/unverified`）、`has_files`（`true/false`）、`page`、`page_size`（1\~200，預設 50）
 
 - `GET /api/models/{model_number}`：單一型號詳情
 
