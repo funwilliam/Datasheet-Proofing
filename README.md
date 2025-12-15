@@ -228,7 +228,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 - `GET /api/files/{file_hash}`：單檔資訊
 
 - `GET /api/files/{file_hash}/search`：在 PDF 內搜尋字串（供 `/review/{file_hash}` 使用）  
-  Query：`q`（必填）、`max_results`（1~200，default 20）、`context`（0~200，default 40）
+  Query：`q`（必填）、`max_results`（1~200，default 20）、`context`（0~200，default 40）  
   回傳：`[{page, snippet, rects, page_size}, ...]`，其中 `rects` 與 `page_size` 用於前端高亮命中區塊。
 
 - `POST /api/files/upload-multi`（multipart/form-data）：多檔上傳  
