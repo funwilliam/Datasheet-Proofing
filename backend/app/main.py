@@ -17,7 +17,6 @@ from .models import FileAsset, ModelItem
 from .routers import files as files_router
 from .routers import tasks as tasks_router
 from .routers import downloads as downloads_router
-from .routers import extractions as extractions_router
 from .routers import models as models_router
 from .routers import export as export_router
 from .routers import static_proxy as static_proxy_router
@@ -72,7 +71,6 @@ async def no_cache_dev(request: Request, call_next):
 app.include_router(files_router.router)
 app.include_router(tasks_router.router)
 app.include_router(downloads_router.router)
-app.include_router(extractions_router.router)
 app.include_router(models_router.router)
 app.include_router(export_router.router)
 app.include_router(static_proxy_router.router)

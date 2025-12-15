@@ -25,7 +25,14 @@ def serve_path(path: str = Query(..., description="Absolute or workspace-relativ
     except Exception:
         raise HTTPException(404, "file not found")
 
-    ok = any(str(rp).startswith(str(base.resolve())) for base in ALLOWED_BASES)
+    def _is_under_base(path: Path, base: Path) -> bool:
+        try:
+            path.relative_to(base)
+            return True
+        except Exception:
+            return False
+
+    ok = any(_is_under_base(rp, base.resolve()) for base in ALLOWED_BASES)
     if not ok:
         raise HTTPException(403, "forbidden")
 

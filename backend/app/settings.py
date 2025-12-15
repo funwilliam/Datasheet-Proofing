@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     DEBUG: bool = True
-    DEBUG_DEVTOOLS: bool
+    DEBUG_DEVTOOLS: bool = False
 
     class Config:
         env_file = ".env"
@@ -19,4 +19,8 @@ settings = Settings()
 
 # Ensure workspace subdirs
 for sub in ["store", "extractions"]:
-    (settings.WORKSPACE_DIR / sub).mkdir(parents=True, exist_ok=True)
+    try:
+        (settings.WORKSPACE_DIR / sub).mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # In read-only deployments, ignore directory creation failure.
+        pass

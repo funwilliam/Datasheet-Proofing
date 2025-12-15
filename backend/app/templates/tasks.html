@@ -25,11 +25,11 @@
     <h2>任務總覽</h2>
 
     <div class="tabs">
-        <button id="tab-download" class="active">下載任務</button>
-        <button id="tab-extraction">擷取任務</button>
+        <button id="tab-extraction" class="active">擷取任務</button>
+        <button id="tab-download">下載任務</button>
     </div>
 
-    <div id="panel-download">
+    <div id="panel-download" class="hidden">
         <div style="margin:8px 0;">
             <label>狀態：
                 <select id="dlStatus">
@@ -60,7 +60,7 @@
         </table>
     </div>
 
-    <div id="panel-extraction" class="hidden">
+    <div id="panel-extraction">
         <div style="margin:8px 0;">
             <label>狀態：
                 <select id="exStatus">

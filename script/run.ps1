@@ -132,6 +132,8 @@ try {
     Exit 1
 }
 
+Start-Sleep -Seconds 3
+
 # 啟動成功後自動開啟瀏覽器
 Start-Process "http://localhost:8000"
 

@@ -6,59 +6,370 @@
   crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <style>
   /* ---- 版面 ---- */
-  #viewer{display:flex;gap:16px}
-  #pdfPane{width:50%;border:1px solid #e5e7eb;height:85vh;overflow:auto;border-radius:10px;background:#fff}
-  #formPane{width:50%;display:flex;flex-direction:column;gap:10px}
+  #viewer {
+    display: flex;
+    gap: 16px;
+  }
+
+  /* 左欄：工具列 + 搜尋結果（外部） + PDF 視窗（有框） */
+  #leftPane {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 150vh;
+    min-width: 0;
+    /* 避免 flex overflow */
+  }
+
+  /* PDF 有框視窗：只放 canvas + hlLayer，並在此捲動 */
+  #pdfPane {
+    flex: 1 1 auto;
+    /* 吃掉剩下高度 */
+    border: 1px solid #e5e7eb;
+    overflow: auto;
+    border-radius: 10px;
+    background: #fff;
+    min-height: 0;
+    /* 讓 overflow 正常生效（重要） */
+  }
+
+  #formPane {
+    width: 50%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+  }
 
   /* 標題列 */
-  .page-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .btn-link{padding:6px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fff;color:#374151;font-size:13px}
-  .btn-link:hover{background:#f3f4f6}
+  .page-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
 
-  /* 工具列 */
-  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
-  .toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:10px;font-size:14px;line-height:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer}
-  .btn:hover{background:#f3f4f6}
-  .btn-primary{background:#111827;color:#fff;border-color:#111827}
-  .btn-primary:hover{filter:brightness(.95)}
-  .btn-toggle.on{background:#111827;color:#fff;border-color:#111827}
-  .state-pill{padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #e5e7eb;background:#fff;color:#111827}
-  .input{border:1px solid #e5e7eb;border-radius:8px;padding:6px 10px;font-size:14px}
+  .btn-link {
+    padding: 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    background: #fff;
+    color: #374151;
+    font-size: 13px;
+  }
+
+  .btn-link:hover {
+    background: #f3f4f6;
+  }
+
+  /* 工具列（左右共用） */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 0;
+    /* 左欄不要額外 top margin */
+  }
+
+  .toolbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    line-height: 20px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    cursor: pointer;
+  }
+
+  .btn:hover {
+    background: #f3f4f6;
+  }
+
+  .btn-primary {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+  }
+
+  .btn-primary:hover {
+    filter: brightness(.95);
+  }
+
+  .btn-toggle.on {
+    background: #111827;
+    color: #fff;
+    border-color: #111827;
+  }
+
+  .state-pill {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    color: #111827;
+  }
+
+  .input {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+
+  .btn-sm {
+    padding: 6px 8px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
 
   /* 右側：格線 */
-  .pane-split{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}
+  .pane-split {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    align-items: start;
+  }
 
   /* 表格 */
-  .grid-wrap{border:1px solid #e5e7eb;border-radius:10px;overflow:visible;background:#fff}
-  table.grid{width:100%;border-collapse:collapse;table-layout:auto}
-  .grid th,.grid td{border-bottom:1px solid #e5e7eb;padding:10px 8px;vertical-align:middle;text-align:left;position:relative}
-  .grid th{background:#f9fafb;font-weight:600;position:sticky;top:0;z-index:1}
-  .col-model{width:160px}
+  .grid-wrap {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: visible;
+    background: #fff;
+  }
+
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: auto;
+  }
+
+  .grid th,
+  .grid td {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 10px 8px;
+    vertical-align: middle;
+    text-align: left;
+    position: relative;
+  }
+
+  .grid th {
+    background: #f9fafb;
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  .col-model {
+    width: 160px;
+  }
 
   /* cell 與編輯視覺 */
-  .cell{position:relative;border-radius:6px;min-height:32px;padding:6px 8px}
-  .cell.view .val{white-space:pre-wrap}   /* ← 顯示/編輯都保留換行 */
-  .cell.editing{outline:2px solid #2563eb;background:#fff}
-  .cell .val{display:block;min-height:18px;white-space:pre-wrap}
-  .cell.view .val:empty::after{content:'—';color:#9ca3af}
-  .cell.editing .val[contenteditable="true"]:focus{outline:none;box-shadow:none}
+  .cell {
+    position: relative;
+    border-radius: 6px;
+    min-height: 32px;
+    padding: 6px 8px;
+  }
+
+  .cell.view .val {
+    white-space: pre-wrap;
+  }
+
+  .cell.editing {
+    outline: 2px solid #2563eb;
+    background: #fff;
+  }
+
+  .cell .val {
+    display: block;
+    min-height: 18px;
+    white-space: pre-wrap;
+  }
+
+  .cell.view .val:empty::after {
+    content: '—';
+    color: #9ca3af;
+  }
+
+  .cell.editing .val[contenteditable="true"]:focus {
+    outline: none;
+    box-shadow: none;
+  }
 
   /* 驗證底色（UI 視覺狀態）*/
-  tr.verified-row td{background:#F0FDF4}
-  tr.unverified-row td{background:#fff}
-
-  /* Tooltip（掛在 td） */
-  td:hover .tip{display:block}
-  .tip{
-    position:absolute;left:0;top:calc(100% + 6px);
-    min-width:260px;max-width:560px;
-    background:#111827;color:#e5e7eb;padding:10px 12px;border-radius:8px;
-    box-shadow:0 10px 30px rgba(0,0,0,.25);
-    font-size:12px;line-height:1.5;display:none;z-index:9999
+  tr.verified-row td {
+    background: #F0FDF4;
   }
-  .tip-title{color:#93c5fd;margin-bottom:6px;font-weight:600}
-  .tip ul{margin:0;padding-left:18px}
+
+  tr.unverified-row td {
+    background: #fff;
+  }
+
+  /* ---- PDF 搜尋結果面板（現在在左欄外部，不要用 margin 撐在框內） ---- */
+  .search-res-panel {
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fff;
+    max-height: 200px;
+    overflow: auto;
+    padding: 8px;
+  }
+
+  .search-res-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+  }
+
+  .search-res-count {
+    font-size: 12px;
+    color: #6b7280;
+  }
+
+  /* ✅ 方案 B：每列用 grid 模擬 table 欄位 */
+  .search-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    /* badge | snippet | actions */
+    gap: 10px;
+    align-items: start;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  .search-item:hover {
+    background: #f3f4f6;
+  }
+
+  .search-page {
+    flex: 0 0 auto;
+    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    background: #fff;
+    color: #111827;
+    align-self: start;
+  }
+
+  .search-snippet {
+    min-width: 0;
+    /* ✅ 關鍵：允許內容縮小，避免擠壓 actions */
+    font-size: 12px;
+    color: #374151;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+
+    max-height: calc(1.4em * 3);
+    overflow: hidden;
+
+    word-break: break-word;
+    hyphens: auto;
+  }
+
+  .search-snippet mark {
+    background: #fde68a;
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+
+  .search-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: flex-start;
+  }
+
+  .search-actions .btn.btn-sm {
+    white-space: nowrap;
+  }
+
+  /* ---- PDF highlight layer（畫在 canvas 上方） ---- */
+  #pdfCanvasWrap {
+    position: relative;
+    display: inline-block;
+  }
+
+  #hlLayer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+  }
+
+  .hl-box {
+    position: absolute;
+    background: rgba(253, 230, 138, 0.55);
+    outline: 1px solid rgba(245, 158, 11, 0.55);
+    border-radius: 2px;
+  }
+
+  /* ---- Global Tooltip (掛到 body, fixed) ---- */
+  .global-tip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    display: none;
+    z-index: 999999;
+
+    min-width: 260px;
+    max-width: min(560px, calc(100vw - 24px));
+
+    background: #111827;
+    color: #e5e7eb;
+    padding: 10px 12px;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+    font-size: 12px;
+    line-height: 1.5;
+
+    box-sizing: border-box;
+    overflow-wrap: anywhere;
+
+    max-height: min(480px, 60vh);
+    overflow: auto;
+
+    pointer-events: none;
+  }
+
+  .global-tip .tip-title {
+    color: #93c5fd;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .global-tip ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+
+  html {
+    scrollbar-gutter: stable;
+  }
 </style>
 {% endblock %}
 
@@ -72,16 +383,28 @@
 </div>
 
 <div id="viewer">
-  <!-- 左：PDF -->
-  <div id="pdfPane">
-    <canvas id="pdfCanvas"></canvas>
-    <div class="toolbar" style="padding:8px 10px;">
+  <!-- 左：工具列 + 搜尋結果（外部） + PDF（有框） -->
+  <div id="leftPane">
+    <!-- 這裡是「移出 PDF 框」的工具列 -->
+    <div class="toolbar" style="padding:0 2px;">
       <button class="btn" onclick="prevPage()">上一頁</button>
       <span>Page <span id="pageNum">1</span> / <span id="pageCount">?</span></span>
       <button class="btn" onclick="nextPage()">下一頁</button>
-      <input type="text" id="searchBox" class="input" placeholder="全文搜尋…"/>
+
+      <input type="text" id="searchBox" class="input" placeholder="全文搜尋…" style="flex:1 1 220px; min-width:180px;" />
       <button class="btn" onclick="doSearch()">搜尋</button>
-      <div id="searchRes" style="font-size:12px;color:#6b7280"></div>
+      <button class="btn" onclick="clearSearchUI()">清除</button>
+    </div>
+
+    <!-- 這裡是「移出 PDF 框」的搜尋結果 -->
+    <div id="searchRes" class="search-res-panel" style="display:none"></div>
+
+    <!-- PDF 框內只放 viewer（可捲動） -->
+    <div id="pdfPane">
+      <div id="pdfCanvasWrap">
+        <canvas id="pdfCanvas"></canvas>
+        <div id="hlLayer"></div>
+      </div>
     </div>
   </div>
 
@@ -125,83 +448,84 @@
   </div>
 </div>
 
+
 <script>
   const fileHash = "{{ fa.file_hash }}";
   const JSON_URL = "{{ json_url }}";
-  const MODEL_NUMBERS = {{ (model_numbers or []) | tojson | safe }};
+  const MODEL_NUMBERS = {{ (model_numbers or[]) | tojson | safe }};
 
-  let pdfDoc=null, pageNum=1;
+  let pdfDoc = null, pageNum = 1;
+  let currentViewport = null;
 
   /* 欄位定義（與 DB 對應） */
   const FIELD_KEYS = [
-    "input_voltage_range","output_voltage","output_power",
-    "package","isolation","insulation","applications","dimension"
+    "input_voltage_range", "output_voltage", "output_power",
+    "package", "isolation", "insulation", "applications", "dimension"
   ];
   const FIELD_LABEL = {
-    input_voltage_range:"Input Voltage Range",
-    output_voltage:"Output Voltage",
-    output_power:"Output Power",
-    package:"Package",
-    isolation:"I/O Isolation",
-    insulation:"Insulation System",
-    applications:"Applications",
-    dimension:"Dimension",
+    input_voltage_range: "Input Voltage Range",
+    output_voltage: "Output Voltage",
+    output_power: "Output Power",
+    package: "Package",
+    isolation: "I/O Isolation",
+    insulation: "Insulation System",
+    applications: "Applications",
+    dimension: "Dimension",
   };
 
   /* 狀態 */
   let editing = false;
-  let rows = [];           // { model_number, verify_status, reviewer, reviewed_at, ...fields, _ui_verify? }
-  let ORIGINAL_ROWS = [];  // 載入時的凍結快照
-  let logsByCell = {};     // logsByCell[model][field] = string[]
-  let dirty = {};          // dirty[model] = { field: newValue, ... }
+  let rows = [];
+  let ORIGINAL_ROWS = [];
+  let logsByCell = {};
+  let dirty = {};
+
+  let _searchCollapsed = false;
 
   /* 小工具 */
-  function deepClone(o){ return JSON.parse(JSON.stringify(o || {})); }
-  function norm(v){ return (v ?? '').toString().trim(); }
-  function ensureDirty(model){ if (!dirty[model]) dirty[model] = {}; return dirty[model]; }
-  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  function deepClone(o) { return JSON.parse(JSON.stringify(o || {})); }
+  function norm(v) { return (v ?? '').toString().trim(); }
+  function ensureDirty(model) { if (!dirty[model]) dirty[model] = {}; return dirty[model]; }
+  function escapeHtml(s) { return (s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function escapeRegExp(s) { return (s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
   /* Applications 轉換與等價判斷（忽略順序與大小寫） */
-  function splitApps(text){
+  function splitApps(text) {
     return (text || "")
       .split(/\r?\n|[,;]/)
       .map(s => s.trim())
       .filter(Boolean);
   }
-  function joinApps(list){
-    return (Array.isArray(list) ? list : []).join('\n'); // 顯示：每行一個
-  }
-  function canonApps(list){
+  function joinApps(list) { return (Array.isArray(list) ? list : []).join('\n'); }
+  function canonApps(list) {
     return Array.from(new Set(
       (list || []).map(s => s.trim()).filter(Boolean).map(s => s.toLowerCase())
     )).sort();
   }
-  function equalApps(a, b){
+  function equalApps(a, b) {
     const A = canonApps(a), B = canonApps(b);
     if (A.length !== B.length) return false;
-    for (let i=0;i<A.length;i++) if (A[i] !== B[i]) return false;
+    for (let i = 0; i < A.length; i++) if (A[i] !== B[i]) return false;
     return true;
   }
 
-  /* 依快照判斷該 model 是否有變更（Applications 用集合等價） */
-  function isRowChanged(model){
+  function isRowChanged(model) {
     const now = rows.find(r => r.model_number === model);
     const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
     if (!now || !orig) return false;
-    for (const f of FIELD_KEYS){
-      if (f === 'applications'){
-        const nowArr  = splitApps(now[f]);
+    for (const f of FIELD_KEYS) {
+      if (f === 'applications') {
+        const nowArr = splitApps(now[f]);
         const origArr = splitApps(orig[f]);
         if (!equalApps(nowArr, origArr)) return true;
-      }else{
+      } else {
         if (norm(now[f]) !== norm(orig[f])) return true;
       }
     }
     return false;
   }
 
-  /* 更新列的 UI 驗證底色（僅視覺） */
-  function applyVerifyVisual(model){
+  function applyVerifyVisual(model) {
     const row = rows.find(r => r.model_number === model);
     const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
     if (!row || !orig) return;
@@ -209,103 +533,380 @@
     row._ui_verify = (orig.verify_status === 'verified' && changed) ? 'unverified' : orig.verify_status;
 
     const trs = Array.from(document.querySelectorAll('#gridBody tr'));
-    for (const tr of trs){
+    for (const tr of trs) {
       const name = tr.querySelector('.col-model .mono')?.textContent?.trim();
-      if (name === model){
+      if (name === model) {
         tr.className = (row._ui_verify === 'verified') ? 'verified-row' : 'unverified-row';
         break;
       }
     }
   }
 
+  /* ---------------------------
+     PDF highlight layer
+     --------------------------- */
+  function clearHighlights() {
+    const layer = document.getElementById('hlLayer');
+    if (layer) layer.innerHTML = '';
+  }
+
+  function applyHighlights(rects) {
+    clearHighlights();
+    if (!currentViewport || !Array.isArray(rects) || rects.length === 0) return;
+
+    const layer = document.getElementById('hlLayer');
+    if (!layer) return;
+
+    for (const r of rects) {
+      const x0 = Number(r.x0), y0 = Number(r.y0), x1 = Number(r.x1), y1 = Number(r.y1);
+      if (![x0, y0, x1, y1].every(Number.isFinite)) continue;
+
+      // pdf.js: convertToViewportRectangle expects PDF user space (bottom-left) -> viewport (top-left)
+      const v = currentViewport.convertToViewportRectangle([x0, y0, x1, y1]);
+      const left = Math.min(v[0], v[2]);
+      const top = Math.min(v[1], v[3]);
+      const width = Math.abs(v[0] - v[2]);
+      const height = Math.abs(v[1] - v[3]);
+
+      const div = document.createElement('div');
+      div.className = 'hl-box';
+      div.style.left = `${Math.round(left)}px`;
+      div.style.top = `${Math.round(top)}px`;
+      div.style.width = `${Math.max(1, Math.round(width))}px`;
+      div.style.height = `${Math.max(1, Math.round(height))}px`;
+      layer.appendChild(div);
+    }
+  }
+
+  /* ---------------------------
+     Global tooltip (body/fixed)
+     --------------------------- */
+  let tipEl = null;
+  let tipVisible = false;
+  let tipAnchor = null;
+
+  function ensureGlobalTip() {
+    if (tipEl) return tipEl;
+    tipEl = document.createElement('div');
+    tipEl.className = 'global-tip';
+    document.body.appendChild(tipEl);
+    return tipEl;
+  }
+
+  function hideTip() {
+    if (!tipEl) return;
+    tipEl.style.display = 'none';
+    tipVisible = false;
+    tipAnchor = null;
+  }
+
+  function setTipContent(title, logs) {
+    const tip = ensureGlobalTip();
+    tip.innerHTML =
+      `<div class="tip-title">${escapeHtml(title)}</div>` +
+      `<ul>${(logs || []).map(s => `<li>${escapeHtml(String(s))}</li>`).join('')}</ul>`;
+  }
+
+  function positionTip(anchorEl) {
+    if (!tipEl || !anchorEl) return;
+
+    const pad = 8;
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+
+    tipEl.style.visibility = 'hidden';
+    tipEl.style.display = 'block';
+    tipEl.style.maxHeight = `min(480px, ${Math.max(120, vh - pad * 2)}px)`;
+
+    const rect = anchorEl.getBoundingClientRect();
+
+    let x = rect.left;
+    let y = rect.bottom + 6;
+
+    const w = tipEl.offsetWidth;
+    const h = tipEl.offsetHeight;
+
+    if (x + w > vw - pad) x = vw - pad - w;
+    if (x < pad) x = pad;
+
+    if (y + h > vh - pad) {
+      y = rect.top - 6 - h;
+      if (y < pad) y = pad;
+    }
+
+    tipEl.style.left = `${Math.round(x)}px`;
+    tipEl.style.top = `${Math.round(y)}px`;
+    tipEl.style.visibility = 'visible';
+  }
+
+  function showTipForCell(td) {
+    if (editing) return;
+    const model = td?.dataset?.model;
+    const field = td?.dataset?.field;
+    if (!model || !field) return;
+
+    const logs = logsByCell?.[model]?.[field] || [];
+    if (!logs.length) { hideTip(); return; }
+
+    const title = `AI 擷取依據（${FIELD_LABEL[field] || field}）`;
+    setTipContent(title, logs);
+
+    tipAnchor = td;
+    tipVisible = true;
+    requestAnimationFrame(() => positionTip(td));
+  }
+
+  window.addEventListener('resize', () => {
+    if (tipVisible && tipAnchor) positionTip(tipAnchor);
+  }, { passive: true });
+
+  window.addEventListener('scroll', () => {
+    if (tipVisible && tipAnchor) positionTip(tipAnchor);
+  }, { passive: true });
+
   /* PDF.js */
   document.addEventListener('DOMContentLoaded', async () => {
     await bootstrapRightPane();
+
     const url = `/pdf/${fileHash}`;
     const loadingTask = window['pdfjsLib'].getDocument(url);
     pdfDoc = await loadingTask.promise;
     document.getElementById('pageCount').textContent = pdfDoc.numPages;
-    renderPage(1);
+    await renderPage(1);
+
+    const sb = document.getElementById('searchBox');
+    if (sb) {
+      sb.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+      });
+    }
   });
 
-  async function renderPage(num){
+  async function renderPage(num) {
     pageNum = num;
+    clearHighlights();
+
     const page = await pdfDoc.getPage(num);
     const pdfPane = document.getElementById('pdfPane');
     const canvas = document.getElementById('pdfCanvas');
+    const wrap = document.getElementById('pdfCanvasWrap');
+    const layer = document.getElementById('hlLayer');
     const ctx = canvas.getContext('2d');
 
     const unscaledViewport = page.getViewport({ scale: 1 });
     const scale = pdfPane.clientWidth / (unscaledViewport.width + 10);
     const viewport = page.getViewport({ scale });
 
+    currentViewport = viewport;
+
     canvas.height = viewport.height;
-    canvas.width  = viewport.width;
+    canvas.width = viewport.width;
+
+    // wrap/layer 同步大小，確保 overlay 精準
+    wrap.style.width = `${Math.round(viewport.width)}px`;
+    wrap.style.height = `${Math.round(viewport.height)}px`;
+    layer.style.width = `${Math.round(viewport.width)}px`;
+    layer.style.height = `${Math.round(viewport.height)}px`;
+
     await page.render({ canvasContext: ctx, viewport }).promise;
     document.getElementById('pageNum').textContent = num;
   }
-  function prevPage(){ if (pageNum>1) renderPage(pageNum-1); }
-  function nextPage(){ if (pageNum<pdfDoc.numPages) renderPage(pageNum+1); }
 
-  async function doSearch(){
-    const q = document.getElementById('searchBox').value;
-    if (!q) return;
-    const res = await fetch(`/api/files/${fileHash}/search?q=` + encodeURIComponent(q));
-    const arr = await res.json();
-    const s = arr.map(x => `第 ${x.page} 頁：…${x.snippet}… <button class="btn btn-sm" onclick="renderPage(${x.page})">跳頁</button>`).join(' ');
-    document.getElementById('searchRes').innerHTML = s || '無結果';
+  function prevPage() { if (pageNum > 1) renderPage(pageNum - 1); }
+  function nextPage() { if (pageNum < pdfDoc.numPages) renderPage(pageNum + 1); }
+
+  /* ---- PDF 全文搜尋（清單式 UI + 高亮 + rects 高亮） ---- */
+  function clearSearchRes() {
+    const box = document.getElementById('searchRes');
+    box.style.display = 'none';
+    box.innerHTML = '';
+    clearHighlights();
+    _searchCollapsed = false;
+  }
+
+  function clearSearchUI() {
+    const sb = document.getElementById('searchBox');
+    if (sb) sb.value = '';
+    clearSearchRes();
+  }
+
+  function toggleSearchRes() {
+    const box = document.getElementById('searchRes');
+    if (!box) return;
+
+    _searchCollapsed = !_searchCollapsed;
+
+    // 保留 head，只把列表項目隱藏
+    const items = Array.from(box.querySelectorAll('.search-item'));
+    for (const el of items) el.style.display = _searchCollapsed ? 'none' : '';
+
+    const btn = document.getElementById('toggleSearchResBtn');
+    if (btn) btn.textContent = _searchCollapsed ? '展開' : '收起';
+
+    // 視覺上收起時縮小面板高度
+    if (_searchCollapsed) {
+      box.style.maxHeight = '48px';
+      box.style.overflow = 'hidden';
+    } else {
+      box.style.maxHeight = '';
+      box.style.overflow = '';
+    }
+  }
+
+  function highlightSnippet(snippet, q) {
+    const s = (snippet || '').toString();
+    const needle = (q || '').trim();
+    if (!needle) return escapeHtml(s);
+
+    const re = new RegExp(escapeRegExp(needle), 'ig');
+    let out = '';
+    let last = 0;
+    for (const m of s.matchAll(re)) {
+      const idx = m.index ?? 0;
+      out += escapeHtml(s.slice(last, idx));
+      out += `<mark>${escapeHtml(s.slice(idx, idx + m[0].length))}</mark>`;
+      last = idx + m[0].length;
+    }
+    out += escapeHtml(s.slice(last));
+    return out || escapeHtml(s);
+  }
+
+  let _searchBusy = false;
+
+  async function doSearch() {
+    const q = (document.getElementById('searchBox').value || '').trim();
+    if (!q || _searchBusy) return;
+
+    _searchBusy = true;
+    const box = document.getElementById('searchRes');
+    box.style.display = 'block';
+    box.innerHTML = '';
+
+    const head = document.createElement('div');
+    head.className = 'search-res-head';
+    head.innerHTML = `<div class="search-res-count">搜尋中…</div>`;
+
+    const headActions = document.createElement('div');
+    headActions.style.display = 'flex';
+    headActions.style.gap = '8px';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn btn-sm';
+    toggleBtn.id = 'toggleSearchResBtn';
+    toggleBtn.textContent = '收起';
+    toggleBtn.onclick = toggleSearchRes;
+
+    headActions.appendChild(toggleBtn);
+    head.appendChild(headActions);
+    box.appendChild(head);
+
+    try {
+      const url = `/api/files/${fileHash}/search?q=` + encodeURIComponent(q) + `&max_results=200&context=60`;
+      const res = await fetch(url);
+      const arr = await res.json();
+
+      if (!Array.isArray(arr) || arr.length === 0) {
+        head.querySelector('.search-res-count').textContent = '無結果';
+        clearHighlights();
+        return;
+      }
+
+      // UI 顯示上限（避免爆）
+      const list = arr.slice(0, 50);
+      head.querySelector('.search-res-count').textContent = `共 ${arr.length} 筆（顯示前 ${list.length} 筆）`;
+
+      for (const x of list) {
+        const item = document.createElement('div');
+        item.className = 'search-item';
+
+        item.onclick = async () => {
+          await renderPage(x.page);
+          // x.rects: PDF point (bottom-left) -> viewport -> overlay
+          applyHighlights(x.rects || []);
+        };
+
+        const badge = document.createElement('div');
+        badge.className = 'search-page';
+        badge.textContent = `P.${String(x.page)}`;
+        item.appendChild(badge);
+
+        const sn = document.createElement('div');
+        sn.className = 'search-snippet';
+        sn.innerHTML = highlightSnippet(x.snippet, q);
+        item.appendChild(sn);
+
+        // ✅ 方案 B：右側 actions 欄（不會被 snippet 擠壓）
+        const rowActions = document.createElement('div');
+        rowActions.className = 'search-actions';
+
+        const jump = document.createElement('button');
+        jump.className = 'btn btn-sm';
+        jump.textContent = '跳頁';
+        jump.onclick = async (e) => {
+          e.stopPropagation();
+          await renderPage(x.page);
+          applyHighlights(x.rects || []);
+        };
+
+        rowActions.appendChild(jump);
+        item.appendChild(rowActions);
+
+        box.appendChild(item);
+      }
+    } finally {
+      _searchBusy = false;
+    }
   }
 
   /* 後端資料 + logs */
-  async function fetchModelOne(modelNumber){
+  async function fetchModelOne(modelNumber) {
     const resp = await fetch(`/api/models/${encodeURIComponent(modelNumber)}`);
     if (!resp.ok) throw new Error(await resp.text());
     return await resp.json();
   }
-  async function fetchAllModelsFromApi(modelNumbers){
+  async function fetchAllModelsFromApi(modelNumbers) {
     const arr = [];
-    for (const mn of modelNumbers){
-      try{ arr.push(await fetchModelOne(mn)); }
-      catch(e){ console.warn('fetch model failed:', mn, e); }
+    for (const mn of modelNumbers) {
+      try { arr.push(await fetchModelOne(mn)); }
+      catch (e) { console.warn('fetch model failed:', mn, e); }
     }
     return arr;
   }
-  async function fetchExtractionJson(){
-    try{
+  async function fetchExtractionJson() {
+    try {
       const r = await fetch(JSON_URL);
       if (!r.ok) { console.warn('logs json load fail', r.status); return null; }
       const j = await r.json();
       if (!j?.models) console.warn('logs json has no models');
       return j;
-    }catch(e){
+    } catch (e) {
       console.warn('logs json error', e);
       return null;
     }
   }
 
-  /* 嚴格 schema 對應：來源鍵 → DB 鍵 的 log 路徑 */
   const LOG_SRC_PATH = {
-    input_voltage_range: ["Input Voltage","log"],
-    output_voltage:      ["Output Voltage","log"],
-    output_power:        ["Output Power","log"],
-    package:             ["Package","log"],
-    isolation:           ["I/O Isolation","log"],
-    insulation:          ["Insulation System","log"],
-    applications:        ["Application","log"],
-    dimension:           ["Dimension","log"],
+    input_voltage_range: ["Input Voltage", "log"],
+    output_voltage: ["Output Voltage", "log"],
+    output_power: ["Output Power", "log"],
+    package: ["Package", "log"],
+    isolation: ["I/O Isolation", "log"],
+    insulation: ["Insulation System", "log"],
+    applications: ["Application", "log"],
+    dimension: ["Dimension", "log"],
   };
 
-  function buildLogsMap(exJson){
+  function buildLogsMap(exJson) {
     const out = {};
     if (!exJson || !Array.isArray(exJson.models)) return out;
 
-    for (const item of exJson.models){
+    for (const item of exJson.models) {
       const mn = (item["Model Number"] || "").trim();
       if (!mn) continue;
       const cellLogs = {};
-      for (const [dbKey, path] of Object.entries(LOG_SRC_PATH)){
+      for (const [dbKey, path] of Object.entries(LOG_SRC_PATH)) {
         let node = item;
-        for (const k of path){
+        for (const k of path) {
           node = (node && typeof node === 'object') ? node[k] : undefined;
         }
         cellLogs[dbKey] = Array.isArray(node) ? node : [];
@@ -315,7 +916,7 @@
     return out;
   }
 
-  function buildRowObj(m){
+  function buildRowObj(m) {
     return {
       model_number: m.model_number,
       verify_status: m.verify_status || 'unverified',
@@ -332,7 +933,7 @@
     };
   }
 
-  async function bootstrapRightPane(){
+  async function bootstrapRightPane() {
     const modelsFromDb = await fetchAllModelsFromApi(MODEL_NUMBERS);
     rows = modelsFromDb.map(buildRowObj);
     ORIGINAL_ROWS = deepClone(rows);
@@ -340,9 +941,9 @@
     const exJson = await fetchExtractionJson();
     const logsMap = buildLogsMap(exJson);
     logsByCell = {};
-    for (const r of rows){
+    for (const r of rows) {
       logsByCell[r.model_number] = {};
-      for (const f of FIELD_KEYS){
+      for (const f of FIELD_KEYS) {
         logsByCell[r.model_number][f] = logsMap?.[r.model_number]?.[f] || [];
       }
     }
@@ -352,6 +953,7 @@
     const toggleBtn = document.getElementById('toggleEditBtn');
     toggleBtn.onclick = () => {
       editing = !editing;
+      hideTip();
       document.getElementById('editLabel').textContent = editing ? '編輯模式：開' : '編輯模式：關';
       document.getElementById('editState').textContent = editing ? '目前為編輯模式' : '目前為檢視模式';
       toggleBtn.classList.toggle('on', editing);
@@ -361,8 +963,7 @@
     document.getElementById('saveAllBtn').onclick = saveAllChanges;
   }
 
-  /* 表格渲染 */
-  function renderGrid(){
+  function renderGrid() {
     const tbody = document.getElementById('gridBody');
     tbody.innerHTML = '';
 
@@ -378,6 +979,9 @@
 
       FIELD_KEYS.forEach(field => {
         const td = document.createElement('td');
+        td.dataset.model = row.model_number;
+        td.dataset.field = field;
+
         const val = row[field] || '';
         const logs = logsByCell[row.model_number]?.[field] || [];
         makeCell(td, row.model_number, field, val, logs);
@@ -388,8 +992,7 @@
     });
   }
 
-  /* 事件綁在 td；雙擊啟動編輯；tooltip 掛在 td */
-  function makeCell(td, model, field, value, logs){
+  function makeCell(td, model, field, value, logs) {
     const div = document.createElement('div');
     div.className = 'cell ' + (editing ? 'edit' : 'view');
 
@@ -399,60 +1002,54 @@
     div.appendChild(inner);
     td.appendChild(div);
 
-    // 檢視模式：tooltip 掛在 td
-    if (!editing && logs && logs.length){
-      const tip = document.createElement('div');
-      tip.className = 'tip';
-      tip.innerHTML =
-        `<div class="tip-title">AI 擷取依據（${FIELD_LABEL[field] || field}）</div>` +
-        `<ul>${logs.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ul>`;
-      td.appendChild(tip);
+    if (!editing && logs && logs.length) {
+      td.addEventListener('mouseenter', () => showTipForCell(td));
+      td.addEventListener('mouseleave', () => hideTip());
     }
 
-    if (editing){
+    if (editing) {
       td.tabIndex = 0;
       let editingNow = false;
 
-      function enterEdit(){
+      function enterEdit() {
         if (editingNow) return;
         editingNow = true;
         div.classList.add('editing');
-        inner.setAttribute('contenteditable','true');
+        inner.setAttribute('contenteditable', 'true');
         inner.focus();
         const r = document.createRange(); r.selectNodeContents(inner);
         const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); sel.collapseToEnd();
       }
 
-      function leaveEdit(commit){
+      function leaveEdit(commit) {
         if (!editingNow) return;
         inner.removeAttribute('contenteditable');
         div.classList.remove('editing');
         editingNow = false;
 
-        if (commit){
+        if (commit) {
           const newRaw = inner.textContent.trim();
           const origVal = ORIGINAL_ROWS.find(r => r.model_number === model)?.[field] ?? '';
 
-          // Applications：集合等價比較、送陣列；其餘欄位送字串
-          if (field === 'applications'){
+          if (field === 'applications') {
             const arr = splitApps(newRaw);
             const origArr = splitApps(origVal);
 
-            if (!equalApps(arr, origArr)){
-              ensureDirty(model)[field] = arr;  // 後端吃陣列
-            }else{
-              if (dirty[model]){ delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
+            if (!equalApps(arr, origArr)) {
+              ensureDirty(model)[field] = arr;
+            } else {
+              if (dirty[model]) { delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
             }
 
             const rowRef = rows.find(r => r.model_number === model);
-            if (rowRef) rowRef[field] = joinApps(arr); // 目前值：每行一個
-          }else{
+            if (rowRef) rowRef[field] = joinApps(arr);
+          } else {
             if (newRaw !== (value || '')) {
               value = newRaw;
               ensureDirty(model)[field] = newRaw || null;
             }
             if (norm(newRaw) === norm(origVal)) {
-              if (dirty[model]){ delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
+              if (dirty[model]) { delete dirty[model][field]; if (!Object.keys(dirty[model]).length) delete dirty[model]; }
             }
             const rowRef = rows.find(r => r.model_number === model);
             if (rowRef) rowRef[field] = newRaw || null;
@@ -464,20 +1061,15 @@
         }
       }
 
-      // ★ 雙擊啟動編輯
-      td.addEventListener('dblclick', (e) => {
-        if (e.target.closest('.tip')) return;
-        enterEdit();
-      });
+      td.addEventListener('dblclick', () => enterEdit());
 
-      // 鍵盤：Applications 支援 Shift+Enter 換行；其他欄位 Enter 提交
       td.addEventListener('keydown', (e) => {
         if (!editingNow) return;
 
-        if (field==='applications' && e.key==='Enter' && e.shiftKey){
+        if (field === 'applications' && e.key === 'Enter' && e.shiftKey) {
           e.preventDefault();
           const sel = window.getSelection();
-          if (sel && sel.rangeCount){
+          if (sel && sel.rangeCount) {
             const r = sel.getRangeAt(0);
             r.deleteContents();
             r.insertNode(document.createTextNode('\n'));
@@ -485,26 +1077,22 @@
           }
           return;
         }
-        if (e.key === 'Enter'){ e.preventDefault(); leaveEdit(true); }
-        if (e.key === 'Escape'){ e.preventDefault(); leaveEdit(false); }
+        if (e.key === 'Enter') { e.preventDefault(); leaveEdit(true); }
+        if (e.key === 'Escape') { e.preventDefault(); leaveEdit(false); }
       });
 
-      // 失焦提交
       inner.addEventListener('blur', () => leaveEdit(true));
     }
   }
 
-  /* 儲存全部（依規則補 verify + reviewer；reviewed_at 由後端自動寫） */
   async function saveAllChanges() {
     const globalReviewer = (document.getElementById('globalReviewer').value || '').trim();
     const payloads = new Map();
 
-    // 先收集有編輯過的列（dirty）
     for (const [model, changes] of Object.entries(dirty)) {
       payloads.set(model, { ...changes });
     }
 
-    // 依規則補上 verify / reviewer
     for (const row of rows) {
       const model = row.model_number;
       const orig = ORIGINAL_ROWS.find(r => r.model_number === model);
@@ -522,7 +1110,6 @@
         if (globalReviewer) p.reviewer = globalReviewer;
         payloads.set(model, p);
       }
-      // 已驗證且無修改 → 不送 PATCH
     }
 
     if (payloads.size === 0) { alert('沒有變更'); return; }
@@ -531,16 +1118,15 @@
       for (const [model, payload] of payloads.entries()) {
         const resp = await fetch(`/api/models/${encodeURIComponent(model)}`, {
           method: 'PATCH',
-          headers: {'Content-Type': 'application/json'},
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
-        if (!resp.ok){
-          const t = await resp.text().catch(()=> '');
+        if (!resp.ok) {
+          const t = await resp.text().catch(() => '');
           throw new Error(`${model} 儲存失敗：${t}`);
         }
       }
 
-      // 重置 & 重載
       dirty = {};
       const modelsFromDb = await fetchAllModelsFromApi(MODEL_NUMBERS);
       rows = modelsFromDb.map(buildRowObj);
@@ -548,7 +1134,7 @@
       rows.forEach(r => delete r._ui_verify);
       renderGrid();
       alert('已儲存所有變更');
-    } catch(e){
+    } catch (e) {
       alert(e.message || e);
     }
   }

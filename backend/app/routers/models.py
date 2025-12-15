@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
 from ..db import get_db
-from ..models import ModelItem, ModelApplicationTag
-from ..schemas import ModelUpsertIn, ModelItemOut, ModelItemLiteOut, ModelsPageOut, FileAssetLite
+from ..models import ModelItem, ModelApplicationTag, FileAsset
+from ..schemas import (
+    ModelUpsertIn,
+    ModelItemOut,
+    ModelItemLiteOut,
+    ModelsPageOut,
+    FileAssetLite,
+)
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -28,9 +35,9 @@ def _apps_to_list(mi: ModelItem) -> List[str]:
 # 取得型號清單（分頁）
 @router.get("", response_model=ModelsPageOut)
 def list_models(
-    q: Optional[str] = None,                     # 只比對 model_number
-    status: Optional[str] = None,                # verified/unverified
-    has_files: Optional[bool] = None,            # 是否有關聯檔案
+    q: Optional[str] = None,
+    status: Optional[str] = None,  # verified/unverified
+    has_files: Optional[bool] = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -51,30 +58,29 @@ def list_models(
             base = base.filter(~ModelItem.files.any())
 
     # ---- 總數（distinct 防 join 重複）
-    total = (
-        base.with_entities(ModelItem.id)
-            .distinct()
-            .count()
-    )
+    total = base.with_entities(ModelItem.id).distinct().count()
 
     # ---- 分頁資料
     rows = (
         base.distinct(ModelItem.id)
-            .order_by(ModelItem.model_number.asc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-            .all()
+        .order_by(ModelItem.model_number.asc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
     )
 
     items: List[ModelItemLiteOut] = []
     for m in rows:
-        files = [FileAssetLite(file_hash=fa.file_hash, filename=fa.filename) for fa in (m.files or [])]
+        files = [
+            FileAssetLite(file_hash=fa.file_hash, filename=fa.filename)
+            for fa in (m.files or [])
+        ]
         items.append(
             ModelItemLiteOut(
                 model_number=m.model_number,
                 verify_status=m.verify_status,
                 reviewer=m.reviewer,
-                reviewed_at=m.reviewed_at,  # 讓 Pydantic 自動轉 ISO8601
+                reviewed_at=m.reviewed_at,
                 files=files,
             )
         )
@@ -96,7 +102,11 @@ def get_model(model_number: str, db: Session = Depends(get_db)) -> Dict[str, Any
 
     # 把出現的檔案也回傳（用 association_proxy: m.files）
     try:
-        files = sorted(list(m.files or []), key=lambda fa: (fa.created_at or 0), reverse=True)
+        files = sorted(
+            list(m.files or []),
+            key=lambda fa: (fa.created_at or datetime.min.replace(tzinfo=timezone.utc)),
+            reverse=True,
+        )
     except Exception:
         files = list(m.files or [])
 
@@ -113,7 +123,7 @@ def get_model(model_number: str, db: Session = Depends(get_db)) -> Dict[str, Any
         "dimension": m.dimension,
         "verify_status": m.verify_status,
         "reviewer": m.reviewer,
-        "reviewed_at": m.reviewed_at,  # FastAPI 會自動轉 ISO8601
+        "reviewed_at": m.reviewed_at,
         "notes": m.notes,
         "files": [
             {"file_hash": fa.file_hash, "filename": fa.filename}
@@ -130,8 +140,16 @@ def update_model(model_number: str, body: ModelUpsertIn, db: Session = Depends(g
     changed = False
 
     # 欄位更新（空字串視為 None）
-    for col in ["input_voltage_range", "output_voltage", "output_power",
-                "package", "isolation", "insulation", "dimension", "notes"]:
+    for col in [
+        "input_voltage_range",
+        "output_voltage",
+        "output_power",
+        "package",
+        "isolation",
+        "insulation",
+        "dimension",
+        "notes",
+    ]:
         if getattr(body, col) is not None:
             new_val = _norm(getattr(body, col))
             old_val = _norm(getattr(m, col))
@@ -141,7 +159,11 @@ def update_model(model_number: str, body: ModelUpsertIn, db: Session = Depends(g
 
     # applications 全量替換
     if body.applications is not None:
-        new_tags_canon = {(t or "").strip().lower() for t in body.applications if (t or "").strip()}
+        new_tags_canon = {
+            (t or "").strip().lower()
+            for t in body.applications
+            if (t or "").strip()
+        }
         old_map = {t.app_tag_canon: t for t in (m.applications or [])}
         old_set = set(old_map.keys())
 
@@ -152,9 +174,22 @@ def update_model(model_number: str, body: ModelUpsertIn, db: Session = Depends(g
 
         # 新增新的
         for canon in list(new_tags_canon - old_set):
-            original = next((t for t in body.applications if (t or "").strip().lower() == canon), None)
+            original = next(
+                (
+                    t
+                    for t in body.applications
+                    if (t or "").strip().lower() == canon
+                ),
+                None,
+            )
             if original:
-                db.add(ModelApplicationTag(model=m, app_tag=original.strip(), app_tag_canon=canon))
+                db.add(
+                    ModelApplicationTag(
+                        model=m,
+                        app_tag=original.strip(),
+                        app_tag_canon=canon,
+                    )
+                )
                 changed = True
 
     # verify_status 處理
