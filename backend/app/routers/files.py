@@ -249,11 +249,14 @@ async def upload_multi(
 # 批量 URL 入列（交給 DownloaderWorker）
 @router.post("/upload-urls")
 async def upload_urls(
-    urls: str = Form(...),
+    urls: List[str] = Form(...),
     hsd_name: str | None = Form(None),
     db: Session = Depends(get_db),
 ):
-    parsed = [u.strip() for u in (urls or "").splitlines() if u.strip()]
+    merged: List[str] = []
+    for item in urls or []:
+        merged.extend([u.strip() for u in (item or "").splitlines() if u.strip()])
+    parsed = merged
     return await enqueue_urls(urls=parsed, hsd_name=hsd_name, db=db)
 
 

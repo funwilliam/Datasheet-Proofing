@@ -23,10 +23,9 @@ flowchart LR
     A1["/api/files"]
     A2["/api/downloads"]
     A3["/api/tasks"]
-    A4["/api/extractions"]
-    A5["/api/models"]
-    A6["/api/export"]
-    A7["/api/static"]
+    A4["/api/models"]
+    A5["/api/export"]
+    A6["/api/static"]
   end
 
   subgraph SVC["services/*"]
@@ -39,15 +38,15 @@ flowchart LR
     STORE["store/<hash>.pdf"]
     EXTR["extractions/<hash>.json"]
     DB["review.sqlite3"]
-    EXP["exports/*"]
   end
 
   %% --- UI -> API actions ---
   F -->|上傳/貼URL| A1
   F -->|批次下載| A2
   F -->|觸發擷取| A3
-  R -->|讀取/校對| A4
-  M -->|查詢/編輯| A5
+  R -->|PDF 全文搜尋| A1
+  R -->|讀取擷取 JSON| A6
+  M -->|查詢/編輯| A4
   T -->|查詢下載| A2
   T -->|查詢擷取| A3
 
@@ -64,9 +63,8 @@ flowchart LR
   EXT --> EXTR
   EXTR --> DB
 
-  A6 --> EXP
-  A7 --> EXTR
-  A7 --> EXP
+  A6 --> EXTR
+  A5 --> DB
 ```
 
 ---
@@ -229,6 +227,10 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 
 - `GET /api/files/{file_hash}`：單檔資訊
 
+- `GET /api/files/{file_hash}/search`：在 PDF 內搜尋字串（供 `/review/{file_hash}` 使用）  
+  Query：`q`（必填）、`max_results`（1~200，default 20）、`context`（0~200，default 40）  
+  回傳：`[{page, snippet, rects, page_size}, ...]`，其中 `rects` 與 `page_size` 用於前端高亮命中區塊。
+
 - `POST /api/files/upload-multi`（multipart/form-data）：多檔上傳  
   範例：
   ```bash
@@ -236,7 +238,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
   ```
 
 - `POST /api/files/upload-urls`（form-data）：批次貼 URL 入列下載  
-  欄位：多筆 `urls`、可選 `hsd_name`  
+  欄位：`urls`（可用多筆欄位或一個欄位內以換行分隔）、可選 `hsd_name`  
   範例：
   ```bash
   curl -X POST -F "urls=https://example.com/a.pdf" -F "urls=https://example.com/b.pdf" -F "hsd_name=ACME" http://127.0.0.1:8000/api/files/upload-urls
@@ -282,13 +284,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 
 ---
 
-### 4) Extractions — `/api/extractions`
-- `GET /api/extractions/{file_hash}`：回傳該檔案的最近一筆擷取摘要＋型號項目列表
-- `GET /api/extractions/{task_id}/output`：下載該次擷取輸出的 JSON（檔案路徑具白名單限制）
-
----
-
-### 5) Models — `/api/models`
+### 4) Models — `/api/models`
 - `GET /api/models`：型號列表  
   Query：`q`（模糊搜尋）、`status`（`verified/unverified`）、`has_files`（`true/false`）、`page`、`page_size`（1~200，預設 50）
 
@@ -302,9 +298,9 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 
 ---
 
-### 6) Export — `/api/export`
+### 5) Export — `/api/export`
 - `GET /api/export`：全庫匯出  
-  Query：`status`（可選）、`fmt`（`json` 預設或 `csv`，CSV 以附件串流下載檔名 `models_export.csv`）
+  Query：`status`（可選）、`fmt`（`json`/`csv`/`xlsx`）
 
 - `POST /api/export/by-models`：依**指定型號清單**匯出  
   Body（JSON）：
@@ -316,13 +312,24 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
     "preserve_order": true
   }
   ```
-  `preserve_order=true` 會照 `model_numbers` 原順序輸出；空清單時 `json` 為 `[]`、`csv` 為空檔。
+  `fmt`：`json`/`csv`/`xlsx`；`preserve_order=true` 會照 `model_numbers` 原順序輸出。
+
+- `POST /api/export/model-settings`：輸出「型號清單模板」（供 Excel 填寫後再轉換成其他專案的 JSON Schema）  
+  Body（JSON）：
+  ```json
+  {
+    "model_numbers": ["ABC-123","XYZ-999"],
+    "fmt": "xlsx",
+    "preserve_order": true
+  }
+  ```
+  `fmt`：`csv`/`xlsx`
 
 ---
 
-### 7) Static Proxy — `/api/static`
+### 6) Static Proxy — `/api/static`
 - `GET /api/static?path=...`：以白名單代理回傳 JSON 檔  
-  安全限制：**僅允許** `workspace/extractions/` 與 `workspace/exports/` 下的檔案
+  安全限制：**僅允許** `workspace/extractions/`（以及預留的 `workspace/exports/`）下的檔案
 
 ---
 
@@ -341,7 +348,8 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
    - 若更動已驗證資料，系統自動轉為未驗證，避免誤信舊標記。
 
 4. **匯出**  
-   - 以 `/api/export` / `/api/export/by-models` 取得 JSON/CSV。  
+   - 以 `/api/export` / `/api/export/by-models` 取得 JSON/CSV/XLSX。  
+   - 以 `/api/export/model-settings` 取得「型號清單模板」（CSV/XLSX）。  
    - 可用 `/api/static` 代理讀取白名單內的 JSON 檔案。
 
 ---
@@ -389,3 +397,9 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 - 新增 **Windows 一鍵腳本行為說明**（防睡眠／恢復睡眠、PID、log、瀏覽器自動開啟）與**工作目錄備份**重點。  
 - 將擷取/下載任務的**狀態集合**分別列出，對齊實作（`queued/running/success/failed` vs `queued/submitted/running/succeeded/failed/canceled`）。  
 - 提供可直接執行的 `curl` 範例與最小啟動命令；對新同事**可操作**而非僅描述。  
+
+### 自 `b9ed70c4` 以來的功能更新
+- 移除 `/api/extractions`：改以 `/api/static` 直接讀取 `workspace/extractions/{file_hash}.json`（流程較不易受內部任務/儲存格式調整影響）。
+- `/review/{file_hash}` PDF 全文搜尋：`GET /api/files/{file_hash}/search` 回傳命中頁碼＋snippet＋矩形座標，前端可高亮顯示命中區塊。
+- OpenAI 成本計算：支援版本化 model 名稱（如 `gpt-5-YYYY-MM-DD`）做定價歸一化，避免 token 有值但 cost 永遠為 0。
+- 匯出升級：規格匯出支援 `xlsx`；新增 `POST /api/export/model-settings` 輸出「型號清單模板」（CSV/XLSX），供 Excel 補 HSD 等欄位後再轉換進一步處理。
