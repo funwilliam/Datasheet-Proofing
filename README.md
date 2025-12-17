@@ -328,7 +328,8 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --log-level 
 ---
 
 ### 6) Static Proxy — `/api/static`
-- `GET /api/static?path=...`：以白名單代理回傳 JSON 檔  
+- `GET /api/static`：以白名單代理回傳 JSON 檔  
+  Query：`path`（必填，工作區相對路徑或絕對路徑）  
   安全限制：**僅允許** `workspace/extractions/`（以及預留的 `workspace/exports/`）下的檔案
 
 ---
